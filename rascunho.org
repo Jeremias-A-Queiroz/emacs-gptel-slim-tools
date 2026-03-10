@@ -1,0 +1,1 @@
+(add-hook 'gptel-post-response-functions (lambda (&rest _) (gptel-slim-context-cleanup)))
