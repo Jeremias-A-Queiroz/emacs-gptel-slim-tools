@@ -1,52 +1,57 @@
-(defun gptel-tag-core-extractor (tags-file tag-name &optional mode add-to-context-p make-visible-p)
-  "Core Cirúrgico Otimizado (v1.1): Localiza TAG-NAME usando apenas o TAGS-FILE.
-O Emacs identifica o arquivo fonte automaticamente a partir da tabela de tags."
+(defun gptel-slim-locate (tag-name tags-file)
+  "Localiza TAG-NAME no TAGS-FILE buscando o padrão (tag-name  linha,offset)."
+  (with-current-buffer (find-file-noselect tags-file)
+    (save-excursion
+      (goto-char (point-min))
+      ;; Buscamos o nome da tag seguido de dois espaços ou o caractere de controle 127
+      (if (re-search-forward (format "%s[\177 ]+\\([0-9]+\\)," (regexp-quote tag-name)) nil t)
+          (let ((line-num (string-to-number (match-string 1))))
+            (re-search-backward "\f\n\\([^,\n]+\\)," nil t)
+            (list (expand-file-name (match-string 1) (file-name-directory tags-file))
+                  line-num))
+        (error "Tag '%s' não encontrada em %s" tag-name tags-file)))))
+
+(defun gptel-slim-fetch-tag-full (tag-name tags-file &optional add-to-context-p make-visible-p)
+  "Localiza a TAG-NAME de forma precisa e extrai a definição completa (defun). Opcionalmente adciona ao contexto do gptel"
   (interactive
-   (list (read-file-name "Arquivo de TAGS: ")
-         (read-string "Nome da Tag (ex: repl): ")
-         (let ((m (read-string "Major-mode (opcional, ex: c++-mode): ")))
-           (if (string-empty-p m) nil (intern m)))
-         (y-or-n-p "Adicionar ao contexto do gptel? ")
-         (y-or-n-p "Tornar o buffer visível agora? ")))
-  
-  (let* ((tags-file-name (expand-file-name tags-file))
-         (context-buf-name (format "*gptel-context:%s*" tag-name))
+   (list (read-string "Tag: " (thing-at-point 'symbol))
+         (read-file-name "Arquivo TAGS: ")
+         t))
+  (let* ((loc (gptel-slim-locate tag-name tags-file))
+         (file (nth 0 loc))
+         (line (nth 1 loc))
+         (buf-name (format "*gptel-context:%s*" tag-name))
          content)
     
-    (save-excursion
-      ;; 1. Garante que a tabela de tags correta seja usada
-      (visit-tags-table tags-file-name)
-      (condition-case nil
-          ;; find-tag-noselect abre o arquivo e posiciona o cursor na tag silenciosamente
-          (let ((target-buf (find-tag-noselect tag-name)))
-            (with-current-buffer target-buf
-              (save-excursion
-                (save-restriction
-                  (widen)
-                  ;; 2. Aplica o modo para garantir a navegação por defun
-                  (when (and mode (not (eq major-mode mode))) (funcall mode))
-                  ;; 3. Isola a função
-                  (beginning-of-defun)
-                  (let ((beg (point)))
-                    (end-of-defun)
-                    (setq content (buffer-substring-no-properties beg (point))))))))
-        (error (error "Erro: Tag '%s' não encontrada em %s" tag-name tags-file-name))))
+    (with-current-buffer (find-file-noselect file)
+      (save-excursion
+        (save-restriction
+          (widen)
+          (goto-char (point-min))
+          (forward-line (1- line))
+          ;; AJUSTE: Move o cursor para o fim da linha para garantir que 
+          ;; o Emacs entenda que estamos 'dentro' da função alvo.
+          (end-of-line)
+          (beginning-of-defun)
+          (let ((beg (point)))
+            (end-of-defun)
+            (setq content (buffer-substring-no-properties beg (point)))))))
 
-    ;; 4. Gerenciamento do Buffer de Resultado
-    (if content
-        (let ((res-buf (get-buffer-create context-buf-name)))
-          (with-current-buffer res-buf
-            (erase-buffer)
-            (insert content)
-            (set-buffer-modified-p nil)
-            (when mode (funcall mode))
-            (if add-to-context-p
-                (progn (require 'gptel-context) (gptel-add))
-              (when (featurep 'gptel-context) (gptel-context-remove res-buf))))
-          (if make-visible-p (pop-to-buffer res-buf))
-          (message "Tag '%s' processada com sucesso." tag-name)
-          res-buf)
-      (message "Erro: Falha ao capturar conteúdo da tag '%s'." tag-name))))
+    (let ((res-buf (get-buffer-create buf-name)))
+      (with-current-buffer res-buf
+        (erase-buffer)
+        (insert content)
+        (set-buffer-modified-p nil)
+        ;; Aplica o modo baseado no arquivo original para realce e indentação
+        (let ((default-directory (file-name-directory file)))
+          (set-auto-mode t))
+	;; context management
+	(if add-to-context-p
+	    (progn (require 'gptel-context) (gptel-add)
+		   (when (featurep 'gptel-context) (gptel-context-remove res-buf))))
+      (if make-visible-p
+          (pop-to-buffer res-buf)
+        res-buf)))))
 
 
 (defun gptel-slim-context-cleanup (&rest _args)
@@ -64,21 +69,20 @@ O uso de &rest _args garante compatibilidade com os argumentos do gptel-post-res
       (message "Limpador Slim: %d buffer(s) removido(s)." count))))
 
 ;; Re-adicionando ao hook de forma limpa
-(remove-hook 'gptel-post-response-functions #'gptel-slim-context-cleanup)
 (add-hook 'gptel-post-response-functions #'gptel-slim-context-cleanup)
 
 ;;--- Tool de investigação
 (gptel-make-tool
  :name "investigate_code_tag"
- :function (lambda (tags_file tag_name &optional major_mode)
+ :function (lambda (tag_name tags_file)
              (condition-case err
-                 (let ((buffer (gptel-tag-core-extractor tags_file tag_name (when major_mode (intern major_mode)) t nil)))
+		 ;;Args: tag_name, tags_file, add-to-context=t make-visible=nil
+                 (let ((buffer (gptel-slim-fetch-tag-full tag_name tags_file t nil)))
                    (with-current-buffer buffer
                      (buffer-substring-no-properties (point-min) (point-max))))
                (error (format "Erro ao investigar tag '%s': %s" tag_name (error-message-string err)))))
  :description "Extract and analyze a specific code fragment (function/variable) from the source code using a TAGS file. 
 Use this to investigate the implementation of a suspected cause-root without reading the whole file."
- :args (list '(:name "tags_file" :type string :description "Path to the TAGS file")
-             '(:name "tag_name" :type string :description "The name of the function or definition to investigate")
-             '(:name "major_mode" :type string :optional t :description "The major-mode to use (e.g., 'c++-mode')"))
+ :args (list '(:name "tag_name" :type string :description "The name of the function or definition to investigate")
+             '(:name "tags_file" :type string :description "Path to the TAGS file"))
  :category "investigation")
