@@ -1,0 +1,46 @@
+GUIA UNIVERSAL DE GERACAO DE TAGS (ETAGS / CTAGS)
+REFERENCIA PARA NAVEGACAO EM EMACS E GPTEL-SLIM-TOOLS
+
+1. USO COM UNIVERSAL CTAGS (RECOMENDADO)
+O Ctags detecta automaticamente a maioria das linguagens. A flag '-e' e 
+obrigatoria para compatibilidade com Emacs.
+
+Geracao Recursiva Geral (Auto-detect):
+ctags -e -R -f TAGS .
+
+Comando via 'find' para controle granular:
+find . -type f -not -path '*/.*' -exec ctags -e -a -f TAGS {} +
+
+Exemplos por Linguagem/Extensao:
+- Python: ctags -e -R --languages=Python -f TAGS .
+- PHP:    ctags -e -R --languages=PHP -f TAGS .
+- JS/TS:  ctags -e -R --languages=JavaScript,TypeScript -f TAGS .
+- Arduino: ctags -e --map-C++=+.ino -R -f TAGS .
+
+2. USO COM ETAGS (NATIVO EMACS)
+O Etags e focado no ecossistema Emacs. Requer a flag '-l' (ou --language) 
+quando a extensao do arquivo nao e padrao.
+
+Geracao Recursiva Geral:
+find . -type f -not -path '*/.*' | xargs etags -a
+
+Exemplos por Linguagem:
+- Python: find . -name "*.py" | xargs etags -a
+- PHP:    find . -name "*.php" | xargs etags -a
+- C/C++:  find . -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.h" \) | xargs etags -a
+- Forcar Linguagem (ex: .ino como C++):
+  etags --language=c++ arquivo.ino
+
+3. COMANDOS ONELINERS UTEIS (DIRETORIO RAIZ)
+
+Varrer todos os arquivos ignorando pastas ocultas (.git, .node_modules):
+find . -type d \( -path "./.*" -o -path "./node_modules" \) -prune -o -type f -print | xargs ctags -e -a -f TAGS
+
+Limpar e regenerar do zero:
+rm -f TAGS && find . -type f -not -path '*/.*' -exec ctags -e -a -f TAGS {} +
+
+4. NOTAS TECNICAS PARA GPTEL-SLIM-TOOLS
+- Nome do Arquivo: Mantenha sempre como 'TAGS' para carregamento automatico.
+- Formato: Sem a flag '-e' (no Ctags), o Emacs nao conseguira ler a tabela.
+- Refresh: Em projetos ativos, execute o oneliner periodicamente para manter
+  as definicoes de funcoes atualizadas para a investigacao do gptel.
