@@ -4,22 +4,32 @@
     (save-excursion
       (goto-char (point-min))
       ;; Buscamos o nome da tag seguido de dois espaços ou o caractere de controle 127
-      (if (re-search-forward (format "%s[\177 ]+\\([0-9]+\\)," (regexp-quote tag-name)) nil t)
-          (let ((line-num (string-to-number (match-string 1))))
+      (if (re-search-forward (format "%s[\177\001 ]+\\([0-9]+\\)," (regexp-quote tag-name)) nil t)
+          (let* ((line-num (string-to-number (match-string 1)))
+		(curr-pt (point))
+		;; Encontra o limite do arquivo atual no TAGS (próximo Form Feed \f ou EOF)
+                (file-end (save-excursion (if (search-forward "\f" nil t) (point) (point-max))))
+                ;; Busca a linha da próxima tag dentro deste mesmo arquivo
+                (next-line (save-excursion
+                             (goto-char curr-pt)
+                             (if (re-search-forward "[\177 ]+\\([0-9]+\\)," file-end t)
+                                 (string-to-number (match-string 1))
+                               nil))))
             (re-search-backward "\f\n\\([^,\n]+\\)," nil t)
             (list (expand-file-name (match-string 1) (file-name-directory tags-file))
-                  line-num))
+                  line-num
+		  next-line))
         (error "Tag '%s' não encontrada em %s" tag-name tags-file)))))
 
-(defun gptel-slim-fetch-tag-full (tag-name tags-file &optional add-to-context-p make-visible-p)
-  "Localiza a TAG-NAME de forma precisa e extrai a definição completa (defun). Opcionalmente adciona ao contexto do gptel"
+(defun gptel-slim-fetch-tag-full (tag-name tags-file &optional make-visible-p)
+  "Localiza a TAG-NAME de forma precisa e extrai a definição completa."
   (interactive
    (list (read-string "Tag: " (thing-at-point 'symbol))
-         (read-file-name "Arquivo TAGS: ")
-         t))
+         (read-file-name "Arquivo TAGS: ")))
   (let* ((loc (gptel-slim-locate tag-name tags-file))
          (file (nth 0 loc))
          (line (nth 1 loc))
+	 (next-line (nth 2 loc))
          (buf-name (format "*gptel-context:%s*" tag-name))
          content)
     
@@ -29,29 +39,21 @@
           (widen)
           (goto-char (point-min))
           (forward-line (1- line))
-          ;; AJUSTE: Move o cursor para o fim da linha para garantir que 
-          ;; o Emacs entenda que estamos 'dentro' da função alvo.
-          (end-of-line)
-          (beginning-of-defun)
           (let ((beg (point)))
-            (end-of-defun)
+            ;; Avança matematicamente para o Próximo Vizinho ou captura 100 linhas por segurança
+            (if next-line
+                (forward-line (- next-line line))
+              (forward-line 100))
             (setq content (buffer-substring-no-properties beg (point)))))))
 
     (let ((res-buf (get-buffer-create buf-name)))
       (with-current-buffer res-buf
         (erase-buffer)
         (insert content)
-        (set-buffer-modified-p nil)
-        ;; Aplica o modo baseado no arquivo original para realce e indentação
-        (let ((default-directory (file-name-directory file)))
-          (set-auto-mode t))
-	;; context management
-	(if add-to-context-p
-	    (progn (require 'gptel-context) (gptel-add)
-		   (when (featurep 'gptel-context) (gptel-context-remove res-buf))))
+        (set-buffer-modified-p nil))
       (if make-visible-p
           (pop-to-buffer res-buf)
-        res-buf)))))
+        res-buf))))
 
 
 (defun gptel-slim-context-cleanup (&rest _args)
@@ -77,7 +79,7 @@ O uso de &rest _args garante compatibilidade com os argumentos do gptel-post-res
  :function (lambda (tag_name tags_file)
              (condition-case err
 		 ;;Args: tag_name, tags_file, add-to-context=t make-visible=nil
-                 (let ((buffer (gptel-slim-fetch-tag-full tag_name tags_file t nil)))
+                 (let ((buffer (gptel-slim-fetch-tag-full tag_name tags_file nil)))
                    (with-current-buffer buffer
                      (buffer-substring-no-properties (point-min) (point-max))))
                (error (format "Erro ao investigar tag '%s': %s" tag_name (error-message-string err)))))
