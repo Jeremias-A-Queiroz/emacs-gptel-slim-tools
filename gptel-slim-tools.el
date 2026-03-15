@@ -101,10 +101,26 @@ Use this to investigate the implementation of a suspected cause-root without rea
                            (cond
                             ;; 1. Tree-sitter: Precisão moderna
                             ((and (fboundp 'treesit-parser-list) (treesit-parser-list))
-                             (mapcar (lambda (node)
-                                       (list (treesit-node-text (treesit-node-child-by-field-name node "name") t)
-                                             :class (treesit-node-type node)))
-                                     (treesit-induce-sparse-tree (treesit-buffer-root) "definition$")))
+			     (let ((root (treesit-buffer-root-node (treesit-language-at (point-min))))
+                                     ;; Filtro expandido para incluir atribuições
+                                     (node-filter "\\(class\\|function\\|method\\)_definition$\\|tag$\\|assignment$")
+                                   (flat-tags nil))
+                               (cl-labels ((flatten-tree (tree)
+                                             (let ((node (car tree))
+                                                   (children (cdr tree)))
+                                                 (when (and node (not (equal node root))
+                                                            (or (not (string-match-p "assignment" (treesit-node-type node)))
+                                                                (equal (treesit-node-parent node) root)))
+                                                 (let ((name-node (or (treesit-node-child-by-field-name node "name")
+                                                                      (treesit-node-child-by-field-name node "key")
+                                                                      (treesit-node-child node 0))))
+                                                   (push (list (treesit-node-text name-node t)
+                                                               :class (treesit-node-type node))
+                                                         flat-tags)))
+                                               (dolist (child children)
+                                                 (flatten-tree child)))))
+                                 (flatten-tree (treesit-induce-sparse-tree root node-filter))
+                                 (reverse flat-tags))))
                             ;; 2. Semantic: Fallback clássico
                             ((and (bound-and-true-p semantic-mode) (fboundp 'semantic-fetch-tags))
                              (mapcar (lambda (tag)
@@ -131,11 +147,21 @@ Use this to investigate the implementation of a suspected cause-root without rea
                      (cond
 		      ;; --- CENÁRIO 0: TREE-SITTER (Primário) ---
                       ((and (fboundp 'treesit-parser-list) (treesit-parser-list))
-                       (let ((node (treesit-node-at (point-min)))) ; Busca simplificada por nome no root
-                         (setq node (treesit-search-forward (treesit-buffer-root)
-                                                            (lambda (n) (string= (treesit-node-text (treesit-node-child-by-field-name n "name") t) tag_name))
-                                                            nil nil))
-                         (when node (setq beg (treesit-node-start node) end (treesit-node-end node)))))
+                       (let* ((lang (treesit-language-at (point-min)))
+                              (node (treesit-search-subtree
+                                     (treesit-buffer-root-node lang)
+                                     (lambda (n)
+                                       (let ((nn (or (treesit-node-child-by-field-name n "name")
+                                                     (treesit-node-child-by-field-name n "declarator")
+                                                     (treesit-node-child-by-field-name n "key")
+                                                     (treesit-node-child n 0))))
+                                         (and nn 
+                                              (string= (treesit-node-text nn t) tag_name)
+                                              (let ((type (treesit-node-type n)))
+                                                (and (string-match-p "definition$\\|tag$\\|assignment$" type)
+                                                     (or (not (string-match-p "assignment" type))
+                                                         (equal (treesit-node-parent n) (treesit-buffer-root-node lang)))))))))))
+                       (when node (setq beg (treesit-node-start node) end (treesit-node-end node)))))
                       ;; --- CENÁRIO 1: SEMANTIC ---
                       ((and (bound-and-true-p semantic-mode)
                             (fboundp 'semantic-fetch-tags)
@@ -179,3 +205,4 @@ Use this to investigate the implementation of a suspected cause-root without rea
  :args (list '(:name "buffer_name" :type string :description "Name of the buffer")
              '(:name "tag_name" :type string :description "Name of the tag/key to extract"))
  :category "investigation")
+
