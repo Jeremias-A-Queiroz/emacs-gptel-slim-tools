@@ -88,3 +88,94 @@ Use this to investigate the implementation of a suspected cause-root without rea
  :args (list '(:name "tag_name" :type string :description "The name of the function or definition to investigate")
              '(:name "tags_file" :type string :description "Path to the TAGS file"))
  :category "investigation")
+
+;;--- Tool de investigação JIT de buffer
+(gptel-make-tool
+ :name "list_buffer_tags"
+ :function (lambda (buffer_name)
+             (condition-case err
+                 (with-current-buffer (or (get-buffer buffer_name)
+                                          (error "Buffer '%s' não encontrado" buffer_name))
+                   (let (tags)
+                     (setq tags
+                           (cond
+                            ;; 1. Tree-sitter: Precisão moderna
+                            ((and (fboundp 'treesit-parser-list) (treesit-parser-list))
+                             (mapcar (lambda (node)
+                                       (list (treesit-node-text (treesit-node-child-by-field-name node "name") t)
+                                             :class (treesit-node-type node)))
+                                     (treesit-induce-sparse-tree (treesit-buffer-root) "definition$")))
+                            ;; 2. Semantic: Fallback clássico
+                            ((and (bound-and-true-p semantic-mode) (fboundp 'semantic-fetch-tags))
+                             (mapcar (lambda (tag)
+                                       (list (semantic-tag-name tag)
+                                             :class (semantic-tag-class tag)))
+                                     (semantic-fetch-tags)))
+                            ;; 3. Imenu: Fallback universal
+                            (t (imenu--make-index-alist))))
+                     (pp-to-string tags)))
+               (error (format "Erro ao listar tags no buffer '%s': %s" 
+                              buffer_name (error-message-string err)))))
+ :description "Lists tags (functions, classes, keys) using Semantic or Imenu. Works for C/C++, Elisp, YAML, Python, Ansible, etc."
+ :args (list '(:name "buffer_name" :type string :description "Name of the open buffer to analyze"))
+ :category "investigation")
+
+;;--- Tool de investigação JIT  de elementos de buffer
+(gptel-make-tool
+ :name "read_tag_source"
+ :function (lambda (buffer_name tag_name)
+             (condition-case err
+                 (with-current-buffer (or (get-buffer buffer_name)
+                                          (error "Buffer '%s' não encontrado" buffer_name))
+                   (let (beg end)
+                     (cond
+		      ;; --- CENÁRIO 0: TREE-SITTER (Primário) ---
+                      ((and (fboundp 'treesit-parser-list) (treesit-parser-list))
+                       (let ((node (treesit-node-at (point-min)))) ; Busca simplificada por nome no root
+                         (setq node (treesit-search-forward (treesit-buffer-root)
+                                                            (lambda (n) (string= (treesit-node-text (treesit-node-child-by-field-name n "name") t) tag_name))
+                                                            nil nil))
+                         (when node (setq beg (treesit-node-start node) end (treesit-node-end node)))))
+                      ;; --- CENÁRIO 1: SEMANTIC ---
+                      ((and (bound-and-true-p semantic-mode)
+                            (fboundp 'semantic-fetch-tags)
+                            (fboundp 'semantic-find-first-tag-by-name))
+                       (let ((tag (semantic-find-first-tag-by-name tag_name (semantic-fetch-tags))))
+                         (when tag
+                           (setq beg (semantic-tag-start tag)
+                                 end (semantic-tag-end tag)))))
+
+                      ;; --- CENÁRIO 2: IMENU ---
+                      (t
+                       (let* ((index (imenu--make-index-alist))
+                              (flat-index nil))
+                         ;; Achata a árvore do imenu resolvendo markers e submenus
+                         (cl-labels ((flatten (alist)
+                                       (dolist (item alist)
+                                         (cond
+                                          ((and (consp item) (stringp (car item)) (markerp (cdr item)))
+                                           (push (cons (car item) (marker-position (cdr item))) flat-index))
+                                          ((and (consp item) (stringp (car item)) (integerp (cdr item)))
+                                           (push item flat-index))
+                                          ((and (consp item) (listp (cdr item)))
+                                           (flatten (cdr item)))))))
+                           (flatten index))
+                         ;; Ordena as tags por posição no arquivo
+                         (setq flat-index (sort flat-index (lambda (a b) (< (cdr a) (cdr b)))))
+                         ;; Encontra os limites da tag
+                         (let ((item (assoc tag_name flat-index)))
+                           (when item
+                             (setq beg (cdr item))
+                             (let ((rest (cdr (member item flat-index))))
+                               (setq end (if rest (cdar rest) (point-max)))))))))
+
+                     ;; --- RETORNO PARA O LLM ---
+                     (if (and beg end)
+                         (buffer-substring-no-properties beg end)
+                       (format "Tag '%s' não encontrada no buffer '%s'." tag_name buffer_name))))
+               (error (format "Erro ao ler tag '%s' do buffer '%s': %s" 
+                              tag_name buffer_name (error-message-string err)))))
+ :description "Extracts the exact source code of a specified tag/function/key from a buffer."
+ :args (list '(:name "buffer_name" :type string :description "Name of the buffer")
+             '(:name "tag_name" :type string :description "Name of the tag/key to extract"))
+ :category "investigation")
