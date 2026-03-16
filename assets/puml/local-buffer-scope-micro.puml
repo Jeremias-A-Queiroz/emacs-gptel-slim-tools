@@ -1,0 +1,23 @@
+@startuml
+skinparam monochrome true
+skinparam defaultFontName monospace
+skinparam padding 5
+
+title Workflow 2: Local Buffer Scope (Micro)
+
+actor User
+participant "Unsaved Buffer" as Buffer
+participant "LLM Agent" as LLM
+participant "list_buffer_tags" as Tool2
+participant "read_tag_source" as Tool3
+collections "AST Engines" as Engines
+
+User -> LLM : 1. Prompts with buffer name & issue
+LLM -> Tool2 : 2. Requests buffer structural overview
+Tool2 -> Engines : 3. Parses active buffer (Live)
+Engines --> LLM : 4. Returns structural index
+LLM -> Tool3 : 5. Requests specific function body
+Tool3 -> Buffer : 6. Extracts exact live code
+Tool3 --> LLM : 7. Returns live implementation
+LLM --> User : 8. Delivers contextualized fix
+@enduml

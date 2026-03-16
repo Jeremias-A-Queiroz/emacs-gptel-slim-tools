@@ -1,0 +1,27 @@
+@startuml
+skinparam monochrome true
+skinparam defaultFontName monospace
+skinparam padding 5
+
+title Workflow 3: Hybrid Scope (Macro + Micro)
+
+actor User
+participant "LLM Agent" as LLM
+
+box "Micro Context (Local State)" #Transparent
+  participant "Local Tools" as LocalTools
+  participant "Live Buffer" as Buffer
+end box
+
+box "Macro Context (Project State)" #Transparent
+  participant "Global Tool" as GlobalTool
+  database "Project TAGS" as Tags
+end box
+
+User -> LLM : 1. Prompts issue, buffer & TAGS
+LLM -> LocalTools : 2. Inspects local unsaved changes
+LocalTools -> Buffer : reads live code
+LLM -> GlobalTool : 3. Cross-references external calls
+GlobalTool -> Tags : extracts distant definitions
+LLM --> User : 4. Resolves deep structural conflicts
+@enduml

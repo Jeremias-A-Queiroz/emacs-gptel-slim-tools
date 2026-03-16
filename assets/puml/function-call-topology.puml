@@ -1,0 +1,65 @@
+@startuml
+skinparam componentStyle rectangle
+skinparam defaultFontName monospace
+skinparam padding 6
+skinparam nodesep 30
+skinparam ranksep 40
+skinparam monochrome true
+skinparam shadowing false
+
+title gptel-slim-tools : Function Call Topology
+
+package "gptel Interface (Tools)" {
+  [investigate_code_tag] as T1
+  [list_buffer_tags] as T2
+  [read_tag_source] as T3
+}
+
+package "Facades / Adapters" {
+  [gptel-thin-tags--investigate-adapter] as F1
+  [gptel-thin-buffer--list-adapter] as F2
+  [gptel-thin-buffer--extract-adapter] as F3
+}
+
+package "Routing & Core Logic" {
+  [gptel-thin-tags--fetch-full] as BaseFetch
+  [gptel-thin-tags--locate] as BaseLoc
+  [gptel-thin-buffer--detect-engine] as Router
+}
+
+package "Listing Workers (Local Scope)" {
+  [gptel-thin-buffer--list-treesit] as L1
+  [gptel-thin-buffer--list-semantic] as L2
+  [gptel-thin-buffer--list-imenu] as L3
+}
+
+package "Extraction Workers (Local Scope)" {
+  [gptel-thin-buffer--extract-treesit] as E1
+  [gptel-thin-buffer--extract-semantic] as E2
+  [gptel-thin-buffer--extract-imenu] as E3
+}
+
+' Tool -> Facade bindings
+T1 --> F1 : calls via #'
+T2 --> F2 : calls via #'
+T3 --> F3 : calls via #'
+
+' Global Scope (TAGS) execution flow
+F1 --> BaseFetch : calls
+BaseFetch --> BaseLoc : calls
+
+' Local Scope (Buffer) routing
+F2 --> Router : detects engine
+F3 --> Router : detects engine
+
+' Dispatching Listing Workers
+F2 --> L1 : if 'treesit
+F2 --> L2 : if 'semantic
+F2 --> L3 : if 'imenu
+
+' Dispatching Extraction Workers
+F3 --> E1 : if 'treesit
+F3 --> E2 : if 'semantic
+F3 --> E3 : if 'imenu
+
+@enduml
