@@ -1,0 +1,17 @@
+
+gptel-thin-buffer.el,443
+(defun gptel-thin-buffer--detect-engine 13,309
+(defun gptel-thin-buffer--list-treesit 25,689
+(defun gptel-thin-buffer--list-semantic 54,2522
+(defun gptel-thin-buffer--list-imenu 61,2786
+(defun gptel-thin-buffer--extract-treesit 66,2951
+(defun gptel-thin-buffer--extract-semantic 87,4193
+(defun gptel-thin-buffer--extract-imenu 94,4499
+(defun gptel-thin-buffer--list-adapter 119,5584
+(defun gptel-thin-buffer--extract-adapter 132,6273
+
+gptel-thin-tags.el,176
+(defun gptel-thin-tags--locate 14,405
+(defun gptel-thin-tags--fetch-full 38,1819
+(defun gptel-thin-tags-cleanup 74,3177
+(defun gptel-thin-tags--investigate-adapter 91,3931

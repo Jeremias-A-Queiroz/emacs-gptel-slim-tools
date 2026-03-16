@@ -1,0 +1,20 @@
+@startuml
+skinparam monochrome true
+skinparam defaultFontName monospace
+skinparam padding 5
+
+title Workflow 1: Global Project Scope (Macro)
+
+actor User
+participant "gptel Context" as Context
+participant "LLM Agent" as LLM
+participant "investigate_code_tag" as Tool1
+database "Project TAGS" as Tags
+
+User -> Context : 1. Injects TAGS file into context
+User -> LLM : 2. Prompts about an architectural issue
+LLM -> Tool1 : 3. Autonomously queries dependencies
+Tool1 -> Tags : 4. Reads exact geometric boundaries
+Tool1 --> LLM : 5. Returns lean source code fragment
+LLM --> User : 6. Delivers precise answer
+@enduml
