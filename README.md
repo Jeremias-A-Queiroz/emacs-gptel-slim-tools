@@ -73,10 +73,10 @@ The tools are designed to be used in distinct workflow paradigms depending on th
 **Execution:** The LLM uses `llm_cache_set` to save findings (e.g., a list of tags). In subsequent turns, it uses `llm_cache_get` to recall this data, preventing the need to re-scan buffers or re-read TAGS files.
 
 **Cache Architecture:**
-![Component Diagram](assets/puml/llm_cache_components.png)
+![Component Diagram](assets/images/llm_cache_components.png)
 
 **Typical Cache Interaction:**
-![Sequence Diagram](assets/puml/llm_cache_sequence.png)
+![Sequence Diagram](assets/images/llm_cache_sequence.png)
 
 ---
 
