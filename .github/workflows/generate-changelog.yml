@@ -1,0 +1,30 @@
+name: Generate Changelog
+
+on:
+  pull_request:
+    types: [closed] # Executa quando o PR for fechado
+
+jobs:
+  update-changelog:
+    if: github.event.pull_request.merged == true # Garante que executa apenas se o PR foi aceito (merge)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true # Silencia o warning do Node.js
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Obrigatório para ler todas as 54 tags
+
+      - name: Generate Changelog
+        uses: TriPSs/conventional-changelog-action@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          skip-version-file: 'true' # Ignora a busca pelo package.json
+          tag-prefix: 'v'           # Reconhece suas tags v0.7.6
+          output-file: 'CHANGELOG.md'
+          git-push: 'true'
+          release-count: '0'

@@ -1,0 +1,19 @@
+# .gitignore para o repositório de configuração do Emacs (apenas fontes)
+# Ignora arquivos gerados /dentro deste repositório/ por acidente ou temporariamente.
+
+# Arquivos de byte-code do Emacs (se gerados aqui, o que é raro com symlinks)
+/.elc
+
+# Arquivos de backup do Emacs (se gerados aqui)
+/~
+# Arquivos de backup numerados do Emacs (se gerados aqui)
+.#/
+
+# Diretórios internos do Git
+.git/
+
+ignoredir/
+
+# Qualquer outro arquivo temporário de desenvolvimento que você crie neste diretório
+# exemplo: temp.el
+TAGS
