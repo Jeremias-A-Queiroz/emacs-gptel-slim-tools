@@ -1,0 +1,59 @@
+@startuml
+title Workflow with LLM Cache (Code inspection example)
+
+actor User
+participant "LLM (by gptel)" as LLM
+participant "Emacs (llm-cache)" as Cache
+
+activate LLM
+
+User -> LLM: "Please, inspect functions caled 'gptel-send' and 'gptel-request'.\nI want a summary of the most relevant factors for the flow of a query."
+
+LLM -> LLM: I want inspect and keep multiple relevant\ntags for final analisis.
+
+LLM -> Cache: llm_cache_set("relevant-tags", "'()")
+activate Cache
+Cache --> LLM: success
+deactivate Cache
+
+LLM ->> User: investigate_code_tag("gptel-send")
+note right: LLM uses investigate tools
+
+User -->> LLM: ('gptel-send'tag content)
+LLM -> LLM: Inspect the content and think is relevant.
+
+LLM -> Cache: llm_cache_set("relevant-tags", "'(\"gptel-send sanitized code...\")")
+activate Cache
+Cache --> LLM: success
+deactivate Cache
+
+LLM ->> User: investigate_code_tag("gptel-request")
+note right: LLM uses tools again
+
+User -->> LLM: ('gptel-request'tag content)
+LLM -> LLM: inspect and thik is relevant.
+
+LLM -> Cache: llm_cache_get("relevant-tags")
+activate Cache
+Cache --> LLM: "'(\"gptel-send sanitized code...\")"
+deactivate Cache
+
+LLM -> LLM: Merge the result with a new tag.
+
+LLM -> Cache: llm_cache_set("relevant-tags", "'(\"gptel-send code...\" \"gptel-request code...\")")
+activate Cache
+Cache --> LLM: success
+deactivate Cache
+
+LLM -> LLM: Now I have all important code.\nI can generate the final answer.
+
+LLM -> Cache: llm_cache_get("relevant-tags")
+activate Cache
+Cache --> LLM: (Returns the complete list of relevant tags)
+deactivate Cache
+
+LLM -> User: "Based on the functions investigated, the main flow is...\n[Detailed and cohesive summary]"
+
+deactivate LLM
+
+@enduml
