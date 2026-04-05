@@ -2,12 +2,12 @@
 # Ignora arquivos gerados /dentro deste repositório/ por acidente ou temporariamente.
 
 # Arquivos de byte-code do Emacs (se gerados aqui, o que é raro com symlinks)
-/.elc
+*.elc
 
 # Arquivos de backup do Emacs (se gerados aqui)
-/~
+*~
 # Arquivos de backup numerados do Emacs (se gerados aqui)
-.#/
+#*
 
 # Diretórios internos do Git
 .git/

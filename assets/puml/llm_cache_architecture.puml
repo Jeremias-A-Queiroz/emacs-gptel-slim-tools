@@ -1,0 +1,40 @@
+@startuml
+title LLM Cache architecture
+
+package "Elisp environment" {
+  [gptel-llm-cache.el] as CacheImpl
+  database "gptel-llm-session-cache\n(Hash Table)" as HashTable
+}
+
+package "GPTEL" {
+  [gptel] as GptelCore
+}
+
+actor "User" as User
+agent "LLM" as AI
+
+User -right-> GptelCore : Interacts
+GptelCore <-right-> AI : Communication
+
+AI ..> GptelCore : Decise to use a tool 
+
+package "LLM tool box" {
+  () "llm_cache_set" as Set
+  () "llm_cache_get" as Get
+  () "llm_cache_list_names" as List
+  () "llm_cache_clear" as Clear
+}
+
+GptelCore --> Set
+GptelCore --> Get
+GptelCore --> List
+GptelCore --> Clear
+
+Set ..> CacheImpl
+Get ..> CacheImpl
+List ..> CacheImpl
+Clear ..> CacheImpl
+
+CacheImpl -down-> HashTable : (Uses)
+
+@enduml
