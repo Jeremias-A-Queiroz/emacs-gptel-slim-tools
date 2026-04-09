@@ -1,0 +1,104 @@
+#+TITLE: Roadmap de Evolução: gptel-slim-tools
+#+AUTHOR: Jeremias & LLM
+#+DESCRIPTION: Orquestração do desenvolvimento das novas features Agentic/Suckless
+#+STARTUP: showeverything
+
+* Visão Geral e Filosofia
+Este documento serve como o mapa arquitetural e o ambiente de desenvolvimento interativo para a evolução do pacote =gptel-slim-tools=.
+Aproveitando o recurso ~gptel-org-branching-context~ e a propriedade ~GPTEL_TOPIC~, cada subtópico abaixo funciona como uma "sala de chat" isolada. Quando você invocar o gptel dentro de um dos tópicos, o LLM terá o contexto focado apenas naquela feature, utilizando o ~GPTEL_SYSTEM~ customizado para a tarefa.
+
+A filosofia central permanece: *KISS, Suckless, sem RAG pesado, sem telemetria. Apenas Emacs nativo, Git, LSP e texto puro.*
+
+---
+
+* Feature 1: Edição Inline com Ediff (apply_patch_to_buffer)
+:PROPERTIES:
+:GPTEL_TOPIC: ediff_workflow
+:GPTEL_SYSTEM: Você é um expert em Emacs Lisp. Seu objetivo atual é implementar a tool 'apply_patch_to_buffer' para o gptel-slim-tools. A tool deve receber um diff unificado, aplicá-mo em um buffer temporário e invocar o 'ediff-buffers' nativo para que o usuário faça o merge visual. Mantenha o código limpo e sem dependências externas.
+:END:
+
+** Conceito (Do Cache)
+Ideia: Criar uma tool =apply_patch_to_buffer=. O LLM gera um unified diff (ou comandos ed). O Emacs intercepta, aplica em um buffer temporário e abre o =ediff= nativo para o usuário fazer o merge visual (aceitar/rejeitar). Resolve o problema de edição inline sem UIs complexas.
+
+** Plano de Implementação
+1. Criar a função Elisp =gptel-slim-apply-patch (buffer-name patch-string)=.
+2. A função deve:
+   - Clonar o buffer alvo para um buffer temporário (ex: =*gptel-patch-target*=).
+   - Aplicar o patch no buffer temporário usando =patch-buffer= ou utilitários nativos de diff.
+   - Chamar =ediff-buffers= entre o buffer original e o buffer temporário.
+   - Adicionar um hook no =ediff-quit-hook= para limpar o buffer temporário após a decisão do usuário.
+3. Registrar a tool via =gptel-make-tool=.
+
+** Espaço para Código e Interação
+(Posicione o cursor aqui e chame o gptel para começarmos a codificar esta feature)
+
+---
+
+* Feature 2: Resolução do Ponto Cego 1 (Estado Original via Git)
+:PROPERTIES:
+:GPTEL_TOPIC: git_state_tools
+:GPTEL_SYSTEM: Você é um expert em Emacs Lisp e Git. Seu objetivo é criar tools para o gptel-slim-tools que permitam ao LLM ler o estado original de arquivos antes das edições do usuário, usando o VC nativo do Emacs ou chamadas diretas ao Git.
+:END:
+
+** Conceito (Do Cache)
+Ideia: Resolver o problema de 'edição em andamento' (onde o LLM só vê o código quebrado no buffer) usando o Git. Criar tools como =get_buffer_diff= (git diff -U3) e =read_tag_from_head= (git show HEAD:arquivo). Isso permite ao LLM entender a intenção original do usuário comparando o estado limpo com o sujo, gastando poucos tokens.
+
+** Plano de Implementação
+1. *Tool 1: =get_buffer_diff=*
+   - Função: =gptel-slim-git-diff (buffer-name)=
+   - Lógica: Usar =vc-working-revision= e =vc-diff= programaticamente, ou um simples =shell-command-to-string= executando =git diff -U3 <arquivo>=.
+2. *Tool 2: =read_tag_from_head=*
+   - Função: =gptel-slim-git-show-tag (tag-name file-path)=
+   - Lógica: Fazer um =git show HEAD:file-path= em um buffer temporário invisível, e reutilizar a lógica atual do =gptel-thin-tags= para extrair apenas a função/tag desejada desse buffer histórico.
+
+** Espaço para Código e Interação
+(Posicione o cursor aqui e chame o gptel para começarmos a codificar esta feature)
+
+---
+
+* Feature 3: O "Project Ledger" (.llm-doc.json) e Motor de Consulta
+:PROPERTIES:
+:GPTEL_TOPIC: project_ledger
+:GPTEL_SYSTEM: Você é um Arquiteto de Software e expert em Emacs Lisp. Seu objetivo é projetar a geração e consulta do arquivo '.llm-doc.json'. Foco em usar a API nativa de JSON do Emacs 28+ (json-parse-string) e integração com Eglot/Tree-sitter para extrair referências cruzadas.
+:END:
+
+** Conceito (Do Cache)
+- *Geração:* Criar um =.llm-doc.json= na raiz do projeto, gerado via LSP (Eglot) + LLM, e atualizado via Git hooks (diffs).
+- *Consulta:* Usar o motor JSON nativo do Emacs para extrair blocos específicos. Se as chaves do JSON mapearem exatamente os nomes do arquivo TAGS, a tool =query_project_doc= pode retornar apenas o nó relevante (ex: a função e suas referências cruzadas) com custo zero de parsing para o LLM.
+
+** Plano de Implementação
+1. *O Gerador Inicial (=gptel-slim-init-doc=):*
+   - Script interativo que varre o projeto.
+   - Tenta usar =eglot= (se disponível) para extrair =textDocument/references=.
+   - Fallback para Tree-sitter.
+   - Estrutura o JSON com as chaves exatas do arquivo =TAGS=.
+2. *O Motor de Consulta (Tool =query_project_doc=):*
+   - Função: =gptel-slim-query-doc (tag-name)=
+   - Lógica: Ler =.llm-doc.json=, fazer o parse com =json-parse-file= (retornando hash-table). Executar =(gethash tag-name (gethash "tags" json-data))= e serializar a resposta de volta para string.
+3. *O Hook de Manutenção:*
+   - Criar um script para =post-commit= que lê o diff, envia para o LLM gerar o summary em background, e atualiza o JSON.
+
+** Espaço para Código e Interação
+(Posicione o cursor aqui e chame o gptel para começarmos a codificar esta feature)
+
+---
+
+* Feature 4: Injeção Automática de Diagnósticos (Flymake/Eglot)
+:PROPERTIES:
+:GPTEL_TOPIC: flymake_injection
+:GPTEL_SYSTEM: Você é um expert em Emacs Lisp. Seu objetivo é criar um advice ou hook no gptel para capturar os erros do Flymake na região selecionada pelo usuário e injetá-los no prompt enviado ao LLM.
+:END:
+
+** Conceito (Do Cache)
+Ideia: Enriquecer o contexto do LLM com diagnósticos em tempo real do Flymake/Eglot. Quando o usuário pede ajuda em uma região, o Emacs extrai automaticamente os erros/avisos (=flymake-diagnostics=) daquele trecho e injeta no prompt. O LLM vê exatamente o que o compilador/LSP está reclamando.
+
+** Plano de Implementação (Abordagem 1 - Automática)
+1. Criar a função de extração: =gptel-slim-get-flymake-errors (beg end)=.
+   - Iterar sobre =(flymake-diagnostics beg end)=.
+   - Formatar como texto puro: ="- [error] Line X: Mensagem"=.
+2. Integração com o gptel:
+   - Investigar a melhor forma de injetar isso. Como o =gptel-org.el= usa =gptel--send-with-props= (um advice em =gptel-send=), podemos criar um advice similar (ex: =:before= ou =:around=) no =gptel-send= ou =gptel-request= que verifica se há região ativa e se há erros do flymake nela.
+   - Se houver, anexa a string formatada ao final do prompt do usuário antes de enviar para a API.
+
+** Espaço para Código e Interação
+(Posicione o cursor aqui e chame o gptel para começarmos a codificar esta feature)
