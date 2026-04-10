@@ -1,98 +1,222 @@
 #+TITLE: Roadmap de Evolução: gptel-slim-tools
-#+AUTHOR: Jeremias & LLM
+#+AUTHOR: Jeremias
 #+DESCRIPTION: Orquestração do desenvolvimento das novas features Agentic/Suckless
 #+STARTUP: showeverything
 
+* Orientações
+Aproveitando o recurso ~gptel-org-branching-context~ e a propriedade
+~GPTEL_TOPIC~, cada subtópico abaixo funciona como uma "sala de chat"
+isolada. Quando você invocar o gptel dentro de um dos tópicos, o LLM
+terá o contexto focado apenas naquela feature, utilizando o
+~GPTEL_SYSTEM~ customizado para a tarefa.
+
+Exemplo de Drawer de isolamento de tópico:
+:PROPERTIES:
+:GPTEL_TOPIC: nomedotopico
+:END:
+
 * Visão Geral e Filosofia
 Este documento serve como o mapa arquitetural e o ambiente de desenvolvimento interativo para a evolução do pacote =gptel-slim-tools=.
-Aproveitando o recurso ~gptel-org-branching-context~ e a propriedade ~GPTEL_TOPIC~, cada subtópico abaixo funciona como uma "sala de chat" isolada. Quando você invocar o gptel dentro de um dos tópicos, o LLM terá o contexto focado apenas naquela feature, utilizando o ~GPTEL_SYSTEM~ customizado para a tarefa.
 
 A filosofia central permanece: *KISS, Suckless, sem RAG pesado, sem telemetria. Apenas Emacs nativo, Git, LSP e texto puro.*
 
----
-
-* Feature 1: Edição Inline com Ediff (apply_patch_to_buffer)
-:PROPERTIES:
-:GPTEL_TOPIC: ediff_workflow
-:GPTEL_SYSTEM: Você é um expert em Emacs Lisp. Seu objetivo atual é implementar a tool 'apply_patch_to_buffer' para o gptel-slim-tools. A tool deve receber um diff unificado, aplicá-mo em um buffer temporário e invocar o 'ediff-buffers' nativo para que o usuário faça o merge visual. Mantenha o código limpo e sem dependências externas.
-:END:
-
-** Conceito (Do Cache)
-Ideia: Criar uma tool =apply_patch_to_buffer=. O LLM gera um unified diff (ou comandos ed). O Emacs intercepta, aplica em um buffer temporário e abre o =ediff= nativo para o usuário fazer o merge visual (aceitar/rejeitar). Resolve o problema de edição inline sem UIs complexas.
-
-** Plano de Implementação
-1. Criar a função Elisp =gptel-slim-apply-patch (buffer-name patch-string)=.
-2. A função deve:
-   - Clonar o buffer alvo para um buffer temporário (ex: =*gptel-patch-target*=).
-   - Aplicar o patch no buffer temporário usando =patch-buffer= ou utilitários nativos de diff.
-   - Chamar =ediff-buffers= entre o buffer original e o buffer temporário.
-   - Adicionar um hook no =ediff-quit-hook= para limpar o buffer temporário após a decisão do usuário.
-3. Registrar a tool via =gptel-make-tool=.
-
-** Espaço para Código e Interação
-(Posicione o cursor aqui e chame o gptel para começarmos a codificar esta feature)
+- O Workflow Agêntico (Macro vs Micro)
+  Para que o LLM atue como um agente autônomo eficiente, ele deve buscar o contexto mais barato e determinístico primeiro, antes de gastar tokens gerando respostas (orquestração inteligente). A hierarquia ideal de investigação é:
+  1. *Big Picture (Macro):* Consultar =.llm-doc.json= via =query_project_doc= para entender a arquitetura e dependências.
+  2. *Definições Estáveis:* Usar =investigate_code_tag= (TAGS) para ler o código de dependências externas do projeto.
+  3. *Estado Atual (Micro):* Usar =list_buffer_tags= e =read_tag_source= para mapear e ler o código em edição ativa (não salvo).
+  4. *Histórico/Intenção:* Usar =read_buffer_diff= e =read_tag_from_head= para entender as mudanças recentes e a intenção original.
+  5. *Memória:* Usar =llm_cache_set= continuamente para reter descobertas importantes como uma "lousa" de trabalho.
 
 ---
 
-* Feature 2: Resolução do Ponto Cego 1 (Estado Original via Git)
+** Feature 1: O "Project Ledger" (.llm-doc.json) e Motor de Consulta
+
+*Conceito*
+- *Geração:* Criar um =.llm-doc.json= na raiz dos projetos versionados, gerado via LSP (Eglot) + LLM, e atualizado via Git hooks (diffs).
+- *Consulta:* Usar o motor JSON nativo do Emacs para extrair blocos específicos. Se as chaves do JSON mapearem exatamente os nomes do arquivo TAGS, a tool =query_project_doc= pode retornar apenas o nó relevante (ex: a função e suas referências cruzadas) com custo zero de parsing para o LLM.
+
+*Plano de Implementação* [1/4]
+- [X]  *Definição do Schema*
+  - Definição de um schema abrangente e enxuto para a doc de um projeto;
+- [ ]  *O Gerador Inicial (=gptel-slim-init-doc=):*
+  - Script interativo que varre o projeto.
+  - Tenta usar =eglot= (se disponível) para extrair =textDocument/references=.
+  - Fallback para Tree-sitter.
+  - Estrutura o JSON com as chaves exatas do arquivo =TAGS=.
+- [ ]  *O Motor de Consulta (Tool =query_project_doc=):*
+  - Função: =gptel-slim-query-doc (tag-name)=
+  - Lógica: Ler =.llm-doc.json=, fazer o parse com =json-parse-file= (retornando hash-table). Executar =(gethash tag-name (gethash "tags" json-data))= e serializar a resposta de volta para string.
+- [ ]  *O Hook de Manutenção:*
+  - Criar um script para =post-commit= que lê o diff, envia para o LLM gerar o summary em background, e atualiza o JSON.
+
+---
+*SCHEMA*
+
+#+caption: Schema Completo do =.llm-doc.json=
+#+begin_src json
+{
+  "project_name": "string",
+  "last_commit_hash": "string",
+  "commit_timestamp": "string",
+  "external_dependencies": [
+    {
+      "name": "string",
+      "version": "string | null",
+      "description": "string | null",
+      "type": "string | null"
+    }
+  ],
+  "tags": [
+    {
+      "tag_name": "string",
+      "type": "string",
+      "origin_file": "string",
+      "summary": "string",
+      "cross_references": [
+        "string"
+      ],
+      "signature": "string | null",
+      "scope": "string | null",
+      "data_type": "string | null"
+    }
+  ]
+}
+#+end_src
+
+*Documentação Detalhada dos Campos*
+
+*/Campos de Nível Superior/*
+
+1.  *=project_name=*
+    *   *Tipo:* =string=
+    *   *Obrigatório:* Sim
+    *   *Descrição:* O nome do projeto. Deve ser um identificador claro e conciso.
+    *   *Exemplo:* ="my-awesome-project"=
+
+2.  *=last_commit_hash=*
+    *   *Tipo:* =string=
+    *   *Obrigatório:* Sim
+    *   *Descrição:* O hash completo do último commit no histórico do Git. Usado para rastrear a versão do código à qual este documento de documentação se refere.
+    *   *Exemplo:* ="a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"=
+
+3.  *=commit_timestamp=*
+    *   *Tipo:* =string=
+    *   *Obrigatório:* Sim
+    *   *Descrição:* O timestamp (data e hora) do último commit, geralmente no formato ISO 8601 ou similar. Indica quando as informações foram geradas ou atualizadas pela última vez.
+    *   *Exemplo:* ="2023-10-27T10:30:00Z"=
+
+4.  *=external_dependencies=*
+    *   *Tipo:* =array= de objetos (={ name: string, version: string | null, description: string | null, type: string | null }=)
+    *   *Obrigatório:* Não (pode ser um array vazio =[]=)
+    *   *Descrição:* Uma lista de todas as bibliotecas e dependências externas que o projeto utiliza. Cada item na lista descreve uma dependência.
+    *   *Campos do Objeto de Dependência:*
+        *   *=name=*
+            *   *Tipo:* =string=
+            *   *Obrigatório:* Sim
+            *   *Descrição:* O nome da biblioteca externa (ex: ="react"=, ="lodash"=, ="requests"=).
+            *   *Exemplo:* ="lodash"=
+        *   *=version=*
+            *   *Tipo:* =string | null=
+            *   *Obrigatório:* Não
+            *   *Descrição:* A versão específica da biblioteca sendo utilizada. Pode ser =null= se a versão não for estritamente definida ou gerenciada (ex: dependências em modo "latest" ou não versionadas).
+            *   *Exemplo:* ="4.17.21"=, =null=
+        *   *=description=*
+            *   *Tipo:* =string | null=
+            *   *Obrigatório:* Não
+            *   *Descrição:* Uma breve descrição do propósito ou funcionalidade da biblioteca externa. Idealmente, gerada pela LLM ou extraída de metadados.
+            *   *Exemplo:* ="Utility library delivering consistency, customization, performance, and more."=, =null=
+        *   *=type=*
+            *   *Tipo:* =string | null=
+            *   *Obrigatório:* Não
+            *   *Descrição:* O tipo de dependência (ex: ="npm"=, ="pip"=, ="maven"=, ="gem"=, ="system"=). Ajuda a contextualizar como a dependência é gerenciada.
+            *   *Exemplo:* ="npm"=, ="pip"=, =null=
+
+/Campo =tags=/
+
+-   *Tipo:* =array= de objetos (={ tag_name: string, type: string, origin_file: string, summary: string, cross_references: string[], signature?: string | null, scope?: string | null, data_type?: string | null }=)
+-   *Obrigatório:* Não (pode ser um array vazio =[]=)
+-   *Descrição:* Uma lista de todas as "tags" ou entidades significativas dentro do projeto (funções, variáveis, classes, etc.). Cada objeto representa uma tag.
+
+-   *Campos do Objeto de Tag:*
+    *   *=tag_name=*
+        *   *Tipo:* =string=
+        *   *Obrigatório:* Sim
+        *   *Descrição:* O nome da entidade (função, variável, classe, etc.). Deve ser o identificador exato usado no código.
+        *   *Exemplo:* ="calculate_total_price"=, ="user_count"=
+    *   *=type=*
+        *   *Tipo:* =string=
+        *   *Obrigatório:* Sim
+        *   *Descrição:* O tipo da entidade. Valores comuns incluem: ="function"=, ="variable"=, ="class"=, ="method"=, ="interface"=, ="enum"=, ="struct"=.
+        *   *Exemplo:* ="function"=
+    *   *=origin_file=*
+        *   *Tipo:* =string=
+        *   *Obrigatório:* Sim
+        *   *Descrição:* O caminho relativo do arquivo onde esta tag está definida.
+        *   *Exemplo:* ="src/utils/math.js"=, ="lib/user_management.py"=
+    *   *=summary=*
+        *   *Tipo:* =string=
+        *   *Obrigatório:* Sim
+        *   *Descrição:* Um resumo conciso gerado pela LLM sobre o propósito e a funcionalidade desta tag. Baseado em análise de código, comentários e/ou documentação existente.
+        *   *Exemplo:* ="Calculates the final price including taxes and discounts."=
+    *   *=cross_references=*
+        *   *Tipo:* =array= de =string=
+        *   *Obrigatório:* Sim (pode ser um array vazio =[]=)
+        *   *Descrição:* Uma lista de =tag_name=s de outras entidades (dentro ou fora deste projeto, se conhecidas) que referenciam ou são referenciadas por esta tag. Ajuda a construir o grafo de dependências.
+        *   *Exemplo:* =["apply_discount", "get_tax_rate"]=
+    *   *=signature=*
+        *   *Tipo:* =string | null=
+        *   *Obrigatório:* Não
+        *   *Descrição:* (Opcional) A assinatura da função ou método, incluindo parâmetros e tipo de retorno. Útil para linguagens com tipagem estática ou para clareza.
+        *   *Exemplo:* ="(price: number, discount: number = 0): number"=, ="(user_id: int) -> User"=, =null=
+    *   *=scope=*
+        *   *Tipo:* =string | null=
+        *   *Obrigatório:* Não
+        *   *Descrição:* (Opcional) O escopo em que a tag está definida (ex: ="global"=, ="local"=, ="private"=, ="public"=, ="protected"=).
+        *   *Exemplo:* ="public"=, ="private"=, =null=
+    *   *=data_type=*
+        *   *Tipo:* =string | null=
+        *   *Obrigatório:* Não
+        *   *Descrição:* (Opcional) Para variáveis ou campos, o tipo de dado que ela armazena (ex: ="int"=, ="string"=, ="boolean"=, ="list[str]"=, ="User"=).
+        *   *Exemplo:* ="int"=, ="string"=, ="list[str]"=, =null=
+
+
+---
+
+*** O Gerador inicial
+
+*** O motor de consulta
+
+*** Hook de manutenção
+
+** Feature 2: Original via Git
 :PROPERTIES:
 :GPTEL_TOPIC: git_state_tools
-:GPTEL_SYSTEM: Você é um expert em Emacs Lisp e Git. Seu objetivo é criar tools para o gptel-slim-tools que permitam ao LLM ler o estado original de arquivos antes das edições do usuário, usando o VC nativo do Emacs ou chamadas diretas ao Git.
 :END:
 
-** Conceito (Do Cache)
-Ideia: Resolver o problema de 'edição em andamento' (onde o LLM só vê o código quebrado no buffer) usando o Git. Criar tools como =get_buffer_diff= (git diff -U3) e =read_tag_from_head= (git show HEAD:arquivo). Isso permite ao LLM entender a intenção original do usuário comparando o estado limpo com o sujo, gastando poucos tokens.
+*** Conceito
+Ideia: Resolver o problema de 'edição em andamento' (onde o LLM só vê o código quebrado no buffer) usando o Git. Criar tools para comparar o estado limpo com o sujo, gastando poucos tokens. Isso permite ao LLM entender a intenção original do usuário comparando o estado limpo com o sujo.
 
-** Plano de Implementação
-1. *Tool 1: =get_buffer_diff=*
+*** Plano de Implementação
+1. *Tool 1: =read_buffer_diff=*
    - Função: =gptel-slim-git-diff (buffer-name)=
    - Lógica: Usar =vc-working-revision= e =vc-diff= programaticamente, ou um simples =shell-command-to-string= executando =git diff -U3 <arquivo>=.
 2. *Tool 2: =read_tag_from_head=*
    - Função: =gptel-slim-git-show-tag (tag-name file-path)=
    - Lógica: Fazer um =git show HEAD:file-path= em um buffer temporário invisível, e reutilizar a lógica atual do =gptel-thin-tags= para extrair apenas a função/tag desejada desse buffer histórico.
 
-** Espaço para Código e Interação
-(Posicione o cursor aqui e chame o gptel para começarmos a codificar esta feature)
-
 ---
 
-* Feature 3: O "Project Ledger" (.llm-doc.json) e Motor de Consulta
-:PROPERTIES:
-:GPTEL_TOPIC: project_ledger
-:GPTEL_SYSTEM: Você é um Arquiteto de Software e expert em Emacs Lisp. Seu objetivo é projetar a geração e consulta do arquivo '.llm-doc.json'. Foco em usar a API nativa de JSON do Emacs 28+ (json-parse-string) e integração com Eglot/Tree-sitter para extrair referências cruzadas.
-:END:
-
-** Conceito (Do Cache)
-- *Geração:* Criar um =.llm-doc.json= na raiz do projeto, gerado via LSP (Eglot) + LLM, e atualizado via Git hooks (diffs).
-- *Consulta:* Usar o motor JSON nativo do Emacs para extrair blocos específicos. Se as chaves do JSON mapearem exatamente os nomes do arquivo TAGS, a tool =query_project_doc= pode retornar apenas o nó relevante (ex: a função e suas referências cruzadas) com custo zero de parsing para o LLM.
-
-** Plano de Implementação
-1. *O Gerador Inicial (=gptel-slim-init-doc=):*
-   - Script interativo que varre o projeto.
-   - Tenta usar =eglot= (se disponível) para extrair =textDocument/references=.
-   - Fallback para Tree-sitter.
-   - Estrutura o JSON com as chaves exatas do arquivo =TAGS=.
-2. *O Motor de Consulta (Tool =query_project_doc=):*
-   - Função: =gptel-slim-query-doc (tag-name)=
-   - Lógica: Ler =.llm-doc.json=, fazer o parse com =json-parse-file= (retornando hash-table). Executar =(gethash tag-name (gethash "tags" json-data))= e serializar a resposta de volta para string.
-3. *O Hook de Manutenção:*
-   - Criar um script para =post-commit= que lê o diff, envia para o LLM gerar o summary em background, e atualiza o JSON.
-
-** Espaço para Código e Interação
-(Posicione o cursor aqui e chame o gptel para começarmos a codificar esta feature)
-
----
-
-* Feature 4: Injeção Automática de Diagnósticos (Flymake/Eglot)
+** Feature 3: Injeção Automática de Diagnósticos (Flymake/Eglot)
 :PROPERTIES:
 :GPTEL_TOPIC: flymake_injection
-:GPTEL_SYSTEM: Você é um expert em Emacs Lisp. Seu objetivo é criar um advice ou hook no gptel para capturar os erros do Flymake na região selecionada pelo usuário e injetá-los no prompt enviado ao LLM.
 :END:
 
-** Conceito (Do Cache)
+*** Conceito
+
 Ideia: Enriquecer o contexto do LLM com diagnósticos em tempo real do Flymake/Eglot. Quando o usuário pede ajuda em uma região, o Emacs extrai automaticamente os erros/avisos (=flymake-diagnostics=) daquele trecho e injeta no prompt. O LLM vê exatamente o que o compilador/LSP está reclamando.
 
-** Plano de Implementação (Abordagem 1 - Automática)
+*** Plano de Implementação (Abordagem 1 - Automática)
 1. Criar a função de extração: =gptel-slim-get-flymake-errors (beg end)=.
    - Iterar sobre =(flymake-diagnostics beg end)=.
    - Formatar como texto puro: ="- [error] Line X: Mensagem"=.
@@ -100,5 +224,24 @@ Ideia: Enriquecer o contexto do LLM com diagnósticos em tempo real do Flymake/E
    - Investigar a melhor forma de injetar isso. Como o =gptel-org.el= usa =gptel--send-with-props= (um advice em =gptel-send=), podemos criar um advice similar (ex: =:before= ou =:around=) no =gptel-send= ou =gptel-request= que verifica se há região ativa e se há erros do flymake nela.
    - Se houver, anexa a string formatada ao final do prompt do usuário antes de enviar para a API.
 
-** Espaço para Código e Interação
-(Posicione o cursor aqui e chame o gptel para começarmos a codificar esta feature)
+---
+
+** Feature 4: Orquestração, System Prompts e Gatilhos Condicionais
+:PROPERTIES:
+:GPTEL_TOPIC: orchestration
+:END:
+
+*** Conceito
+Como as ferramentas são modulares e independentes (KISS/Suckless), o
+LLM precisa de dicas de como combiná-las dinamicamente. Faremos isso
+através de um System Prompt mestre e "Gatilhos Condicionais" embutidos
+nas descrições das tools, permitindo que elas funcionem perfeitamente
+sozinhas, mas sugiram sinergias quando outras tools estiverem ativas. 
+
+*** Plano de Implementação
+1. [ ] *Refatoração das Descriptions (Gatilhos Condicionais):*
+   - Atualizar as descrições das tools atuais (=investigate_code_tag=, =read_tag_source=, =llm_cache_set=, etc.).
+   - *Regra:* 90% da descrição foca na utilidade isolada, 10% no final sugere sinergia.
+   - *Exemplo para =read_tag_source=:* "... Extrai o código fonte exato. *Sinergia:* Se precisar entender a arquitetura antes, use 'query_project_doc' (se ativa). Para salvar este código para depois, use 'llm_cache_set'."
+2. [ ] *Criação do System Prompt Mestre:*
+   - Desenhar a persona do Agente Investigativo que prioriza a economia de tokens e a busca determinística (JSON > TAGS > Buffer > Diff).
