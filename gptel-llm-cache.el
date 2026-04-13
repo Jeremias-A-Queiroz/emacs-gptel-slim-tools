@@ -12,8 +12,6 @@ This cache is ephemeral and cleared on Emacs restart.")
   (let* ((cache-symbol (intern cache-name-string))
          (data (read-from-string elisp-data-string)))
     (puthash cache-symbol data gptel-llm-session-cache)
-    ;; CORREÇÃO: Como 'data' pode ser uma lista Elisp arbitrária, passá-la
-    ;; diretamente vai quebrar o `json-serialize`. Retornamos como string.
     `((status . "success")
       (cache_name . ,cache-name-string)
       (data . ,(prin1-to-string data)))))
@@ -23,7 +21,6 @@ This cache is ephemeral and cleared on Emacs restart.")
   (let* ((cache-symbol (intern cache-name-string))
          (data (gethash cache-symbol gptel-llm-session-cache)))
     (if data
-        ;; CORREÇÃO: Retorna a representação em string para evitar crash no JSON.
         `((status . "success")
           (cache_name . ,cache-name-string)
           (data . ,(prin1-to-string data)))
@@ -31,11 +28,10 @@ This cache is ephemeral and cleared on Emacs restart.")
         (message . ,(format "LLM cache '%s' not found." cache-name-string))))))
 
 (defun gptel-llm-cache-list-names ()
-  "Lists the string names of all Elisp data objects currently stored."
+  "Lists the string names of all Elisp data objects currently stored.
+Used internally for context injection."
   (let (names)
     (maphash (lambda (key _value) (push (symbol-name key) names)) gptel-llm-session-cache)
-    ;; CORREÇÃO: O Emacs json-serialize EXIGE vetores para arrays JSON.
-    ;; Uma lista causaria um erro `plistp` ou corrupção de dados.
     `((status . "success")
       (names . ,(vconcat (nreverse names))))))
 
@@ -54,6 +50,24 @@ This cache is ephemeral and cleared on Emacs restart.")
       `((status . "success")
         (message . "All LLM caches cleared.")))))
 
+;; --- Context Injection ---
+
+(defun gptel-slim-inject-cache-names (&optional _info)
+  "Inject active LLM cache names into the gptel prompt buffer.
+Intended to be used in `gptel-prompt-transform-functions'.
+INFO is the request plist provided by gptel."
+  (let* ((cache-result (gptel-llm-cache-list-names))
+         (names-vector (alist-get 'names cache-result))
+         (names-list (and names-vector (append names-vector nil))))
+    (when names-list
+      (goto-char (point-max))
+      (insert "\n\n--- Available Caches ---\n")
+      (dolist (name names-list)
+        (insert (format "- %s\n" name))))))
+
+;; Register the injection function in gptel's prompt transformation hook
+(add-hook 'gptel-prompt-transform-functions #'gptel-slim-inject-cache-names)
+
 ;; --- Tool Declarations ---
 
 (gptel-make-tool
@@ -70,16 +84,9 @@ This cache is ephemeral and cleared on Emacs restart.")
  :args (list '(:name "cache_name_string" :type string :description "The string name of the Elisp cache symbol to retrieve.")))
 
 (gptel-make-tool
- :name "llm_cache_list_names"
- :function #'gptel-llm-cache-list-names
- :description "Lists the string names of all Elisp data objects currently stored in the LLM's in-memory session cache."
- :args nil)
-
-(gptel-make-tool
  :name "llm_cache_clear"
  :function #'gptel-llm-cache-clear
  :description "Clears a specific Elisp data object from the LLM's in-memory session cache, or clears all caches if no name is provided."
- ;; CORREÇÃO: Removido `(or string null)`. Usamos `:type string` com `:optional t`.
  :args (list '(:name "cache_name_string" :type string :optional t :description "The string name of the Elisp cache symbol to clear (optional, clears all if omitted).")))
 
 (provide 'gptel-llm-cache)
