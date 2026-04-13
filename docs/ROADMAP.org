@@ -295,7 +295,8 @@ Este workflow garante que o `gptel-slim-init-doc` seja um gerador abrangente, qu
       determinística, o único trabalho do LLM deve ser chamar
       'llm_cache_clean' e a tool deve cuidar do restante.
 
-*** Gestão dos nomes de cache
+*** DONE Gestão dos nomes de cache
+CLOSED: [2026-04-13 Mon 14:37]
 
 /Proposta Técnica: Injeção Dinâmica de Contexto de Cache no =gptel=/
 
@@ -419,164 +420,6 @@ próxima injeção. Não há necessidade de mecanismos adicionais de
 sincronização ou limpeza de estado para a string injetada, pois ela é
 efêmera e gerada sob demanda. 
 
-**** Implementação
-
-Seguindo todas as boas práticas de programação elisp e todo o
-direcionamento técnico exposto acima precisamos criar a função
-=gptel-slim-inject-cache-names= e o hook para
-=gptel-prompt-transform-functions= 
-
-Para tanto segue código fonte das tools de cache:
-
-[[~/src/emacs-gptel-slim-tools/gptel-llm-cache.el]]
-
-
-Também segue o arquivo TAGS 
-
-[[~/.emacs.d/elpa/gptel-20260408.557/TAGS]]
-
-Que deve ser usado com a tool =investigate_code_tags= para gerar
-contexto e assim podermos executar essa implementação dentro das
-melhores práticas possíveis.
-
-
-
-
-#+begin_tool (investigate_code_tag :tags_file "~/.emacs.d/elpa/gptel-20260408.557/TAGS" :tag_name "gptel-prompt-transform-functions")
-(:name "investigate_code_tag" :args (:tags_file "~/.emacs.d/elpa/gptel-20260408.557/TAGS" :tag_name "gptel-prompt-transform-functions"))
-
-(defcustom gptel-prompt-transform-functions
-  '(gptel--transform-apply-preset gptel--transform-add-context)
-  "Handlers to augment or transform a query before sending it.
-
-This hook is called in a temporary buffer containing the text to
-be sent, with the cursor at the end of the prompt.  You can use
-it to modify the buffer or buffer-local variables as required.
-
-Since these functions modify the prompt construction buffer, the order
-in which they run is significant!  In particular, you may want to add
-your function before (the default) or after
-`gptel--transform-add-context', which adds gptel's context (other
-buffers, files etc) to this buffer.
-
-Example: A typical use case might be to search for occurrences of $(cmd)
-and replace it with the output of the shell command cmd, making it easy
-to send the output of shell commands to the LLM.
-
-Transform functions can be synchronous or asynchronous.
-
-Synchronous hook functions must accept zero or one argument: the INFO
-plist for the current request.
-
-Asynchronous hook functions must accept two arguments: a callback to
-call after the transformation is complete, and the INFO plist for the
-current request.
-
-Note that while this set of handlers can certainly be set with a global
-value to be applied to all queries in all buffers, it meant to be set
-locally for a specific buffer, or chat topic, or only the context of a
-certain task."
-  :type 'hook)
-
-
-#+end_tool
-#+begin_src elisp
-;;; gptel-llm-cache.el --- LLM-managed ephemeral session cache -*- lexical-binding: t; -*-
-
-(require 'gptel)
-
-(defvar gptel-llm-session-cache (make-hash-table :test 'eq)
-  "Hash table to store LLM-managed session cache data.
-Keys are symbols representing cache names, values are arbitrary Elisp data.
-This cache is ephemeral and cleared on Emacs restart.")
-
-(defun gptel-llm-cache-set (cache-name-string elisp-data-string)
-  "Sets or updates an Elisp data object in the LLM's in-memory session cache."
-  (let* ((cache-symbol (intern cache-name-string))
-         (data (read-from-string elisp-data-string)))
-    (puthash cache-symbol data gptel-llm-session-cache)
-    `((status . "success")
-      (cache_name . ,cache-name-string)
-      (data . ,(prin1-to-string data)))))
-
-(defun gptel-llm-cache-get (cache-name-string)
-  "Retrieves an Elisp data object from the LLM's in-memory session cache."
-  (let* ((cache-symbol (intern cache-name-string))
-         (data (gethash cache-symbol gptel-llm-session-cache)))
-    (if data
-        `((status . "success")
-          (cache_name . ,cache-name-string)
-          (data . ,(prin1-to-string data)))
-      `((status . "error")
-        (message . ,(format "LLM cache '%s' not found." cache-name-string))))))
-
-(defun gptel-llm-cache-list-names ()
-  "Lists the string names of all Elisp data objects currently stored.
-Used internally for context injection."
-  (let (names)
-    (maphash (lambda (key _value) (push (symbol-name key) names)) gptel-llm-session-cache)
-    `((status . "success")
-      (names . ,(vconcat (nreverse names))))))
-
-(defun gptel-llm-cache-clear (&optional cache-name-string)
-  "Clears a specific Elisp data object from the LLM's in-memory session cache."
-  (if cache-name-string
-      (if (gethash (intern cache-name-string) gptel-llm-session-cache)
-          (progn
-            (remhash (intern cache-name-string) gptel-llm-session-cache)
-            `((status . "success")
-              (message . ,(format "LLM cache '%s' cleared." cache-name-string))))
-        `((status . "error")
-          (message . ,(format "LLM cache '%s' not found." cache-name-string))))
-    (progn
-      (clrhash gptel-llm-session-cache)
-      `((status . "success")
-        (message . "All LLM caches cleared.")))))
-
-;; --- Context Injection ---
-
-(defun gptel-slim-inject-cache-names (&optional _info)
-  "Inject active LLM cache names into the gptel prompt buffer.
-Intended to be used in `gptel-prompt-transform-functions'.
-INFO is the request plist provided by gptel."
-  (let* ((cache-result (gptel-llm-cache-list-names))
-         (names-vector (alist-get 'names cache-result))
-         (names-list (and names-vector (append names-vector nil))))
-    (when names-list
-      (goto-char (point-max))
-      (insert "\n\n--- Available Caches ---\n")
-      (dolist (name names-list)
-        (insert (format "- %s\n" name))))))
-
-;; Register the injection function in gptel's prompt transformation hook
-(add-hook 'gptel-prompt-transform-functions #'gptel-slim-inject-cache-names)
-
-;; --- Tool Declarations ---
-
-(gptel-make-tool
- :name "llm_cache_set"
- :function #'gptel-llm-cache-set
- :description "Sets or updates an Elisp data object in the LLM's in-memory session cache. The LLM can define the name of the cache and store arbitrary Elisp data literals (lists, strings, numbers, hash tables). Use this for autonomous caching of relevant information. IMPORTANT: DO NOT provide executable code, only data literals (e.g., '(\"item1\" \"item2\"), \"a string\", 123, (make-hash-table :test 'equal))."
- :args (list '(:name "cache_name_string" :type string :description "The string name for the Elisp symbol to be used as a cache (e.g., \"my-relevant-tags\").")
-             '(:name "elisp_data_string" :type string :description "A string containing an Elisp data literal to store (e.g., '(\"tag1\" \"tag2\"), \"a summary string\", 123, (make-hash-table :test 'equal)).")))
-
-(gptel-make-tool
- :name "llm_cache_get"
- :function #'gptel-llm-cache-get
- :description "Retrieves the Elisp data object associated with a given name from the LLM's in-memory session cache. Returns the data as an Elisp string representation."
- :args (list '(:name "cache_name_string" :type string :description "The string name of the Elisp cache symbol to retrieve.")))
-
-(gptel-make-tool
- :name "llm_cache_clear"
- :function #'gptel-llm-cache-clear
- :description "Clears a specific Elisp data object from the LLM's in-memory session cache, or clears all caches if no name is provided."
- :args (list '(:name "cache_name_string" :type string :optional t :description "The string name of the Elisp cache symbol to clear (optional, clears all if omitted).")))
-
-(provide 'gptel-llm-cache)
-;;; gptel-llm-cache.el ends here
-#+end_src
-
-
 **  Feature 3: Send Node at Point
     Quero inserir uma nova opção no menu transient do gptel de nome
     'Send Node at Point' que irá enviar apenas o nó em que o usuário
@@ -586,6 +429,7 @@ INFO is the request plist provided by gptel."
     'investigate_code_tag' ou 'investigate_buffer_tag' ou as novas
     tools que consultam o =.llm-doc.json= permitindo uma assistência
     dentro do código mais rica e ao mesmo tempo magra.
+
 ** Feature 4: Original via Git
 :PROPERTIES:
 :GPTEL_TOPIC: git_state_tools
