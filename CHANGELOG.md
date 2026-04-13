@@ -1,3 +1,12 @@
+# [0.4.0](https://github.com/Jeremias-A-Queiroz/emacs-gptel-slim-tools/compare/v0.3.0...v0.4.0) (2026-04-13)
+
+
+### Features
+
+* Adiciona injeção de contexto para nomes de cache ([32482a1](https://github.com/Jeremias-A-Queiroz/emacs-gptel-slim-tools/commit/32482a17d394683dac87a0469f2a7ffebcc926b6))
+
+
+
 # [0.3.0](https://github.com/Jeremias-A-Queiroz/emacs-gptel-slim-tools/compare/v0.2.1...v0.3.0) (2026-04-05)
 
 
