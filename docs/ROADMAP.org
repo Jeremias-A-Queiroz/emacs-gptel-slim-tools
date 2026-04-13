@@ -185,11 +185,250 @@ A filosofia central permanece: *KISS, Suckless, sem RAG pesado, sem telemetria. 
 
 *** O Gerador inicial
 
+*Descritivo do workflow para o gerador inicial =M-x gptel-slim-init-doc=*  
+`gptel-slim-init-doc` será o comando para gerar o arquivo inicial `.llm-doc.json` na raiz do seu projeto. Ele é projetado para ser robusto, interativo e aproveitar as ferramentas existentes no Emacs e no sistema para coletar informações detalhadas do código, minimizando a carga inicial do LLM.
+
+**1. Como Chamar a Função**
+
+ Execute `M-x gptel-slim-init-doc`. A função tentará inferir o diretório raiz do projeto a partir do buffer atual (arquivo ou Dired).
+
+**2. Pré-requisitos Essenciais**
+
+Para uma execução bem-sucedida, o ambiente deve atender aos seguintes pontos:
+
+-   **Emacs 28+ com `gptel`:** O pacote `gptel` deve estar instalado, configurado e funcional.
+-   **Projeto Versionado por Git:** O diretório raiz do projeto *deve* ser um repositório Git para extração de metadados como `last_commit_hash` e `commit_timestamp`.
+-   **Identificação da Raiz do Projeto:** A função buscará a raiz na seguinte ordem de preferência: `project.el`, arquivo `.project`, diretório `.git/`, ou `default-directory`.
+-   **etags Instalado:** o etags deve estar no `PATH` para gerar o arquivo `TAGS`.
+-   **Opcional - LSP (Eglot/LSP-mode):** dependência para obter informações mais ricas (assinaturas, referências, tipos) através de um servidor LSP ativo para a linguagem do seu projeto.
+
+**3. Fluxo de Trabalho Simplificado**
+
+O processo de geração do `.llm-doc.json` deve seguir estas etapas:
+
+1.  **Verificação e Confirmação:**
+    -   Verifica a existência de um `.llm-doc.json` e solicita confirmação para sobrescrever, se necessário.
+    -   Confirma a raiz do projeto detectada com o usuário.
+
+2.  **Coleta de Metadados do Projeto:**
+    *   Extrai `project_name` (do nome do diretório), `last_commit_hash` e `commit_timestamp` (do Git).
+
+3.  **Identificação de Dependências Externas:**
+    *   Tenta identificar e listar dependências a partir de arquivos de manifesto comuns (ex: `package.json`, `requirements.txt`) na raiz do projeto.
+
+4.  **Geração/Atualização do Arquivo `TAGS`:**
+    *   Gera ou atualiza o arquivo `TAGS` para todo o projeto usando `ctags`, essencial para mapeamento de símbolos.
+
+5.  **Extração de Símbolos e Contexto do Código:**
+    *   Percorre os arquivos de código-fonte do projeto, ignorando diretórios de build/dependências.
+    *   **Prioridade 1 (LSP):** Utiliza o servidor LSP ativo para obter símbolos (funções, variáveis, classes), seus tipos, escopos, assinaturas e referências cruzadas.
+    *   **Prioridade 2 (Tree-sitter):** Se o LSP não estiver disponível, tenta usar o Tree-sitter para parsear o código e extrair informações.
+    *   **Prioridade 3 (`TAGS`):** Como fallback final, lê o arquivo `TAGS` para obter `tag_name`, `type` e `origin_file`, deixando os detalhes para o LLM.
+
+6.  **Geração de Sumários e Detalhes via LLM:**
+    *   Para cada tag extraída, a função lê o bloco de código correspondente.
+    *   Envia este snippet ao LLM (via `gptel-api-query`) com um prompt específico para gerar `summary`, `cross_references`, `signature`, `scope` e `data_type`.
+
+7.  **Construção e Salvamento do `.llm-doc.json`:**
+    *   Agrega todos os dados coletados e gerados pelo LLM em uma estrutura JSON.
+    *   Serializa a estrutura e salva como `.llm-doc.json` na raiz do projeto.
+    *   Exibe uma mensagem de sucesso e sugere adicionar o arquivo ao `.gitignore` ou commitá-lo, conforme a intenção do usuário.
+
+Este fluxo garante que o `gptel-slim-init-doc` seja um gerador abrangente, que aproveita ao máximo as ferramentas disponíveis para criar um `.llm-doc.json` inicial rico em contexto e preciso.o de Tags e Contexto (Estratégia de Fallback):**
+    -   Percorre os arquivos de código-fonte do projeto (ignorando diretórios comuns como `.git/`, `node_modules/`).
+    -   **Prioridade 1: LSP (Eglot/LSP-mode):** Tenta usar o servidor LSP ativo para obter símbolos, tipos, escopos, assinaturas e referências cruzadas (`textDocument/documentSymbol`, `textDocument/references`).
+    -   **Prioridade 2: Tree-sitter:** Se LSP não estiver disponível, utiliza Tree-sitter para parsear o código e extrair símbolos, tipos e assinaturas (referências cruzadas podem ser limitadas).
+    -   **Prioridade 3: Arquivo `TAGS`:** Como fallback final, lê o arquivo `TAGS` para obter `tag_name`, `type` e `origin_file`. Neste caso, campos como `summary`, `cross_references`, `signature`, `scope` e `data_type` serão inicialmente nulos e dependerão *inteiramente* da inferência do LLM.
+
+6.  **Geração de Sumários e Detalhes via LLM:**
+    -   Para cada tag extraída (com ou sem detalhes via LSP/Tree-sitter), o bloco de código correspondente é lido.
+    -   Este snippet é enviado ao LLM (via `gptel-api-query`) com um prompt específico para gerar: `summary`, `cross_references`, `signature`, `scope` e `data_type`.
+    -   A resposta do LLM é então usada para popular os campos correspondentes da tag.
+
+7.  **Construção e Salvamento do `.llm-doc.json`:**
+    -   Todos os dados coletados e gerados são agregados em uma estrutura de dados Elisp, mapeando o schema JSON definido.
+    -   Esta estrutura é serializada para JSON e salva como `.llm-doc.json` na raiz do projeto.
+    -   Uma mensagem de sucesso é exibida, com sugestões para gerenciar o arquivo (ex: adicionar ao `.gitignore` ou commitá-lo).
+
+Este workflow garante que o `gptel-slim-init-doc` seja um gerador abrangente, que maximiza o uso de ferramentas existentes para fornecer o contexto mais rico possível ao LLM, otimizando a precisão do `.llm-doc.json` gerado e minimizando o custo de tokens.
+
+
+
+
+
+
+
 *** O motor de consulta
 
 *** Hook de manutenção
 
-** Feature 2: Original via Git
+** Feature 2: Melhorias no cache
+   Hoje o llm_cache_* funciona muito bem mas há dois pontos de
+   melhoria latentes:
+   1. Criar uma função que printe o estado do cache um
+      gptel-slim-cache-dump. Ele poderia trazer todo o conteúdo do
+      cache para um buffer que poderia ser salvo e utilizado no dia
+      seguinte com um gptel-slim-cache-load;
+   2. A tool 'llm_cache_list_names' pode ser ajustada para que sua
+      description receba um apêndice contendo os nomes de cache já
+      salvos. Dessa forma a LLM não precisaria interagir com a tool
+      para ver os nomes salvos, o que traria economia de tokens de
+      saída e economizaria em uma rodada de interação da LLM.
+      Exemplo: LLM salva o cache "funcao_xpto". Em uma próxima
+      interação o nome "funcao_xpto" seria pritado ao final do texto
+      de description em uma seção "Caches salvos:".
+      Resumindo a tool 'llm_cache_list_names' não seria mais uma tool
+      a ser executada, pois seu description após o primeiro uso já
+      traria o enriquecimento de contexto necessário a utilização do
+      cache.
+      Talvez até poderia remover essa tool e fazer com que os nomes
+      dos caches definidos sejam printados no description de
+      llm_cache_get ou coisa semelhante. É um tema para refletir
+      posteriormente.
+      Se a estratégia for para o caminho de remover a tool
+      'llm_cache_list_names' em favor de colocar essa infor na
+      description de outra tool precisaremos de uma estratégia de
+      garbage-colector. No caso ao rodar 'llm_cache_clean' para
+      remover a definição de um cache o apendice do description
+      precisa ser higienizado junto, isso deve ser feito de forma
+      determinística, o único trabalho do LLM deve ser chamar
+      'llm_cache_clean' e a tool deve cuidar do restante.
+
+*** llm_cache_list_names
+
+
+/Proposta Técnica: Injeção Dinâmica de Contexto de Cache no =gptel=/
+
+/1. Visão Geral e Objetivo/
+
+Esta proposta descreve a implementação de um mecanismo para injetar
+dinamicamente os nomes dos caches ativos no prompt enviado à LLM
+através do pacote =gptel=. O objetivo principal é fornecer à LLM o
+conhecimento dos caches disponíveis de forma transparente (passiva),
+eliminando a necessidade de uma chamada de ferramenta (tool call)
+explícita para listar esses nomes. Isso resulta em economia de tokens,
+redução de latência (menos rodadas de interação) e uma arquitetura
+mais elegante e alinhada com os princípios KISS e Suckless. 
+
+/2. Arquitetura e Componentes/
+
+A solução baseia-se na utilização de hooks nativos do =gptel= para interceptar e modificar o prompt antes de seu envio.
+
+/Componentes Principais:/
+
+1.  /Estado do Cache (=gptel-llm-session-cache=):/ A estrutura de dados (hash table) existente que armazena os caches em memória.
+2.  /Função Extratora (=gptel-llm-cache-list-names=):/ A função Elisp existente que consulta o =gptel-llm-session-cache= e retorna a lista de nomes de caches ativos. Esta função deixará de ser exposta como uma tool para a LLM e passará a ser de uso estritamente interno.
+3.  /Função Injetora (=gptel-slim-inject-cache-names=):/ Uma nova função Elisp a ser implementada. Sua responsabilidade é coordenar a extração dos nomes e a formatação do texto a ser anexado ao prompt.
+4.  /Hook de Transformação (=gptel-prompt-transform-functions=):/ O hook nativo do =gptel= onde a Função Injetora será registrada. Este hook é acionado em um buffer temporário contendo o prompt final, permitindo modificações antes do envio.
+
+/3. Fluxo de Execução (Algoritmo)/
+
+O processo de injeção ocorre de forma determinística a cada nova requisição enviada pelo usuário à LLM.
+
+1.  /Interação do Usuário:/ O usuário submete um prompt no Emacs via =gptel=.
+2.  /Preparação do Prompt:/ O =gptel= inicia a construção do prompt em um buffer temporário.
+3.  /Acionamento do Hook:/ O =gptel= executa as funções registradas em =gptel-prompt-transform-functions=, incluindo a nossa Função Injetora (=gptel-slim-inject-cache-names=).
+4.  /Consulta ao Cache:/ A Função Injetora invoca a Função Extratora (=gptel-llm-cache-list-names=) para obter a lista atualizada de nomes de cache.
+5.  /Avaliação Condicional:/
+    *   /Caso A (Cache Vazio):/ Se a lista retornada for nula ou vazia, a Função Injetora encerra sua execução silenciosamente. Nenhuma alteração é feita no prompt.
+    *   /Caso B (Caches Existentes):/ Se a lista contiver elementos, a Função Injetora formata esses nomes em uma string descritiva (ex: "\n\n--- Caches Disponíveis ---\n- cache_a\n- cache_b").
+6.  /Injeção no Prompt:/ A string formatada é inserida no final do buffer temporário do prompt.
+7.  /Envio à LLM:/ O =gptel= envia o prompt final (agora enriquecido com o contexto dos caches) para a LLM.
+
+/4. Diagramas/
+
+/4.1. Diagrama de Fluxo (Comportamento)/
+
+Este diagrama ilustra a lógica condicional da Função Injetora.
+
+#+begin_src plantuml
+@startuml
+skinparam monochrome true
+skinparam defaultFontName "Cascadia Code"
+
+start
+:Usuário envia prompt via gptel;
+:gptel prepara buffer temporário do prompt;
+:gptel aciona **gptel-prompt-transform-functions**;
+:Executa **gptel-slim-inject-cache-names**;
+:**gptel-llm-cache-list-names** consulta o Hash Table;
+
+if (Existem caches ativos?) then (Sim)
+  :Formata lista de nomes em string;
+  :Insere string no final do buffer do prompt;
+else (Não)
+  :Não faz nada (retorna silenciosamente);
+endif
+
+:gptel envia prompt final para LLM;
+stop
+@enduml
+#+end_src
+
+/4.2. Diagrama de Blocos (Arquitetura e Interação)/
+
+Este diagrama detalha a interação entre os componentes do sistema.
+
+#+begin_src plantuml
+@startuml
+skinparam monochrome true
+skinparam packageStyle rectangle
+skinparam defaultFontName "Cascadia Code"
+
+actor "Usuário" as User
+boundary "Emacs / gptel UI" as UI
+control "gptel Core" as Core
+entity "gptel-llm-session-cache\n(Hash Table)" as Cache
+control "gptel-slim-inject-cache-names\n(Função Injetora)" as Injector
+control "gptel-llm-cache-list-names\n(Função Extratora)" as Extractor
+control "LLM" as LLM
+
+User -> UI : Envia Prompt
+UI -> Core : Inicia requisição
+
+box "Processamento do Prompt (Hook)"
+    Core -> Injector : Aciona via gptel-prompt-transform-functions
+    Injector -> Extractor : Solicita nomes dos caches
+    Extractor -> Cache : Lê chaves do Hash Table
+    Cache --> Extractor : Retorna lista de chaves (ou nil)
+    Extractor --> Injector : Retorna lista de nomes
+    
+    alt Caches existem
+        Injector -> Injector : Formata string
+        Injector -> Core : Modifica buffer do prompt (append)
+    else Caches não existem
+        Injector -> Core : Nenhuma ação (pass-through)
+    end
+end box
+
+Core -> LLM : Envia Prompt Enriquecido
+LLM --> Core : Retorna Resposta
+Core --> UI : Exibe Resposta
+
+@enduml
+#+end_src
+
+/5. Considerações sobre Ciclo de Vida (Garbage Collection)/
+
+A arquitetura proposta garante que a "coleta de lixo" seja
+inerentemente transparente. Como a Função Injetora consulta o estado
+do =gptel-llm-session-cache= em /tempo real/ a cada requisição,
+qualquer modificação prévia feita por ferramentas como
+=llm_cache_clear= ou =llm_cache_set= será imediatamente refletida na
+próxima injeção. Não há necessidade de mecanismos adicionais de
+sincronização ou limpeza de estado para a string injetada, pois ela é
+efêmera e gerada sob demanda. 
+
+**  Feature 3: Send Node at Point
+    Quero inserir uma nova opção no menu transient do gptel de nome
+    'Send Node at Point' que irá enviar apenas o nó em que o usuário
+    está trabalhando e automaticamente exigir um prompt na linha de
+    prompt. Também automaticamente enviaria o arquivo TAGS do projeto
+    e o nome do buffer para que o LLM possa escolher entre usar a tool
+    'investigate_code_tag' ou 'investigate_buffer_tag' ou as novas
+    tools que consultam o =.llm-doc.json= permitindo uma assistência
+    dentro do código mais rica e ao mesmo tempo magra.
+** Feature 4: Original via Git
 :PROPERTIES:
 :GPTEL_TOPIC: git_state_tools
 :END:
@@ -207,7 +446,7 @@ Ideia: Resolver o problema de 'edição em andamento' (onde o LLM só vê o cód
 
 ---
 
-** Feature 3: Injeção Automática de Diagnósticos (Flymake/Eglot)
+** Feature 5: Injeção Automática de Diagnósticos (Flymake/Eglot)
 :PROPERTIES:
 :GPTEL_TOPIC: flymake_injection
 :END:
@@ -226,7 +465,7 @@ Ideia: Enriquecer o contexto do LLM com diagnósticos em tempo real do Flymake/E
 
 ---
 
-** Feature 4: Orquestração, System Prompts e Gatilhos Condicionais
+** Feature 6: Orquestração, System Prompts e Gatilhos Condicionais
 :PROPERTIES:
 :GPTEL_TOPIC: orchestration
 :END:
@@ -245,3 +484,5 @@ sozinhas, mas sugiram sinergias quando outras tools estiverem ativas.
    - *Exemplo para =read_tag_source=:* "... Extrai o código fonte exato. *Sinergia:* Se precisar entender a arquitetura antes, use 'query_project_doc' (se ativa). Para salvar este código para depois, use 'llm_cache_set'."
 2. [ ] *Criação do System Prompt Mestre:*
    - Desenhar a persona do Agente Investigativo que prioriza a economia de tokens e a busca determinística (JSON > TAGS > Buffer > Diff).
+
+
