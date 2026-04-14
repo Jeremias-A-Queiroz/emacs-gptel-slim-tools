@@ -37,7 +37,7 @@ Searches for the pattern (tag-name  line,offset) within the TAGS file."
 
 (defun gptel-thin-tags--fetch-full (tag-name tags-file &optional make-visible-p)
   "Precisely locate TAG-NAME and extract its complete definition.
-Creates a temporary buffer prefixed with '*gptel-context:*'.
+Creates a temporary buffer prefixed with *gptel-context:*.
 If MAKE-VISIBLE-P is non-nil, pop to the created buffer."
   (interactive
    (list (read-string "Tag: " (thing-at-point 'symbol))
@@ -72,8 +72,8 @@ If MAKE-VISIBLE-P is non-nil, pop to the created buffer."
         res-buf))))
 
 (defun gptel-thin-tags-cleanup (&rest _args)
-  "Silently remove '*gptel-context:*' buffers without polluting the message area.
-The '&rest _args' signature ensures compatibility with 'gptel-post-response-functions'."
+  "Silently remove *gptel-context:* buffers without polluting the message area.
+The '&rest _args' signature ensures compatibility with gptel-post-response-functions."
   (interactive)
   (let ((count 0))
     (dolist (buf (buffer-list))
@@ -99,7 +99,7 @@ Returns the exact string content of the temporary context buffer."
 (gptel-make-tool
  :name "investigate_code_tag"
  :function #'gptel-thin-tags--investigate-adapter
- :description "Extract project-wide code fragment (function/variable) via TAGS file. Avoids reading full files. Synergy: Cache findings via llm_cache_set. Batch multiple calls."
+ :description "Extract project-wide code fragment (function or variable) via TAGS file. Avoids reading full files. Synergy: Cache findings via llm_cache_set. Batch multiple calls."
  :args (list '(:name "tag_name" :type string :description "The name of the function or definition to investigate")
              '(:name "tags_file" :type string :description "Path to the TAGS file"))
  :category "investigation")

@@ -13,7 +13,7 @@
 
 (defun gptel-thin-buffer--detect-engine ()
   "Detect the most appropriate parsing engine for the current buffer.
-Returns one of 'treesit, 'semantic, or 'imenu."
+Returns one of treesit, semantic, or imenu."
   (cond
    ((and (fboundp 'treesit-parser-list) (treesit-parser-list))
     'treesit)
@@ -153,7 +153,7 @@ and returns the exact source code string with engine metadata."
 (gptel-make-tool
  :name "list_buffer_tags"
  :function #'gptel-thin-buffer--list-adapter
- :description "List tags (functions, classes, keys) in active buffer via structural parsing (C/C++, Elisp, YAML, etc.). Synergy: Precedes read_tag_source. For project-wide search, use investigate_code_tag."
+ :description "List tags (functions, classes, keys) in active buffer via structural parsing (C, C++, Elisp, YAML, etc.). Synergy: Precedes read_tag_source. For project-wide search, use investigate_code_tag."
  :args (list '(:name "buffer_name" :type string :description "Name of the open buffer to analyze"))
  :category "investigation")
 
