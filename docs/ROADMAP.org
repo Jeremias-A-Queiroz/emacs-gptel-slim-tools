@@ -479,14 +479,92 @@ através de um System Prompt mestre e "Gatilhos Condicionais" embutidos
 nas descrições das tools, permitindo que elas funcionem perfeitamente
 sozinhas, mas sugiram sinergias quando outras tools estiverem ativas. 
 
-*** Plano de Implementação
-1. [ ] *Refatoração das Descriptions (Gatilhos Condicionais):*
+*** Plano de Implementação [1/2]
+1. [X] *Refatoração das Descriptions (Gatilhos Condicionais):*
    - Atualizar as descrições das tools atuais (=investigate_code_tag=, =read_tag_source=, =llm_cache_set=, etc.).
    - *Regra:* 90% da descrição foca na utilidade isolada, 10% no final sugere sinergia.
    - *Exemplo para =read_tag_source=:* "... Extrai o código fonte exato. *Sinergia:* Se precisar entender a arquitetura antes, use 'query_project_doc' (se ativa). Para salvar este código para depois, use 'llm_cache_set'."
 2. [ ] *Criação do System Prompt Mestre:*
-   - Desenhar a persona do Agente Investigativo que prioriza a economia de tokens e a busca determinística (JSON > TAGS > Buffer > Diff).
+   - Desenhar a persona do Agente Investigativo que prioriza a
+     economia de tokens e a busca determinística (JSON > TAGS > Buffer
+     > Diff).
 
+
+**** 1. =read_tag_source=
+
+*1. Original:*
+> Extracts the exact source code of a specified tag/function/key from a buffer using structural bounds.
+
+*2. Português:*
+> Extrai o código-fonte exato de uma tag (função, variável, chave, etc.) de um buffer Emacs ativo, utilizando seus limites estruturais. Garante que você obtenha o conteúdo preciso sem a necessidade de carregar arquivos externos. /Sinergia:/ Combine com =list_buffer_tags= para descobrir as tags disponíveis. Para recuperar múltiplas tags, priorize o envio de várias chamadas =read_tag_source= em um único bloco. Para armazenar o código extraído, utilize =llm_cache_set=.
+
+*3. Inglês Telegráfico (Tool Description):*
+> Extract exact tag source from active buffer via structural bounds. Synergy: Find tags via =list_buffer_tags= and cache via =llm_cache_set=. Batch multiple calls. 
+
+---
+
+**** 2. =list_buffer_tags=
+
+*1. Original:*
+> Lists tags (functions, classes, keys) from an active buffer using structural parsing. Works for C/C++, Elisp, YAML, Python, Ansible, etc.
+
+*2. Português:*
+> Lista todas as tags reconhecidas (funções, classes, chaves) em um buffer Emacs ativo via análise estrutural (C/C++, Elisp, YAML, etc.). Fundamental para visão geral do buffer. /Sinergia:/ Passo inicial antes de =read_tag_source=. Para busca ampla no projeto inteiro, prefira =investigate_code_tag=.
+
+*3. Inglês Telegráfico (Tool Description):*
+> List tags (functions, classes, keys) in active buffer via structural parsing (C/C++, Elisp, YAML, etc.). Synergy: Precedes =read_tag_source=. For project-wide search, use =investigate_code_tag=.
+
+---
+
+**** 3. =investigate_code_tag=
+
+*1. Original:*
+> Extract and analyze a specific code fragment (function/variable) from the source code using a TAGS file. Use this to investigate the implementation of a suspected root-cause without reading the whole file.
+
+*2. Português:*
+> Extrai código-fonte de um fragmento específico consultando o arquivo TAGS do projeto. Ferramenta principal para investigar implementações sem ler o arquivo completo. /Sinergia:/ Agrupe várias chamadas =investigate_code_tag= em um único bloco para economizar tokens. Armazene descobertas com =llm_cache_set=.
+
+*3. Inglês Telegráfico (Tool Description):*
+> Extract project-wide code fragment (function/variable) via TAGS file. Avoids reading full files. Synergy: Cache findings via llm_cache_set. Batch multiple calls.
+
+---
+
+**** 4. =llm_cache_clear=
+
+*1. Original:*
+> Clears a specific Elisp data object from the LLM's in-memory session cache, or clears all caches if no name is provided.
+
+*2. Português:*
+> Limpa um objeto de dados Elisp específico do cache de sessão em memória, ou limpa todos se nenhum nome for fornecido. /Sinergia:/ Atualiza automaticamente a lista 'Available Caches' no prompt.
+
+*3. Inglês Telegráfico (Tool Description):*
+> Clear specific Elisp data from memory cache, or all if unnamed. 
+
+---
+
+**** 5. =llm_cache_get=
+
+*1. Original:*
+> Retrieves the Elisp data object associated with a given name from the LLM's in-memory session cache. Returns the data as an Elisp string representation.
+
+*2. Português:*
+> Recupera um objeto de dados Elisp do cache em memória pelo nome. Retorna como string Elisp. /Sinergia:/ Verifique a seção 'Available Caches' no prompt antes de chamar. Contraparte do =llm_cache_set=.
+
+*3. Inglês Telegráfico (Tool Description):*
+> Retrieve cached Elisp data string by name. Synergy: Check 'Available Caches' prompt list before calling. Counterpart to =llm_cache_set=.
+
+---
+
+**** 6. =llm_cache_set=
+
+*1. Original:*
+> Sets or updates an Elisp data object in the LLM's in-memory session cache. The LLM can define the name of the cache and store arbitrary Elisp data literals (lists, strings, numbers, hash tables). Use this for autonomous caching of relevant information. IMPORTANT: DO NOT provide executable code, only data literals (e.g., '("item1" "item2"), "a string", 123, (make-hash-table :test 'equal)).
+
+*2. Português:*
+> Armazena/atualiza um literal de dados Elisp (listas, strings, números, hash) no cache em memória. IMPORTANTE: Apenas literais de dados, sem código executável. /Sinergia:/ Agrupe várias chamadas =llm_cache_set= em um único bloco. Novos nomes aparecem em 'Available Caches'.
+
+*3. Inglês Telegráfico (Tool Description):*
+> The Scrapbook. Store/update Elisp data literal (list, string, number, hash) in memory cache. NO EXECUTABLE CODE. Synergy: Batch multiple calls. Updates 'Available Caches' list.
 
 ** Melhoria da documentação
    Hoje as tools ainda estão em um status simples. Sua arquitetura é
