@@ -73,20 +73,20 @@ INFO is the request plist provided by gptel."
 (gptel-make-tool
  :name "llm_cache_set"
  :function #'gptel-llm-cache-set
- :description "Sets or updates an Elisp data object in the LLM's in-memory session cache. The LLM can define the name of the cache and store arbitrary Elisp data literals (lists, strings, numbers, hash tables). Use this for autonomous caching of relevant information. IMPORTANT: DO NOT provide executable code, only data literals (e.g., '(\"item1\" \"item2\"), \"a string\", 123, (make-hash-table :test 'equal))."
+ :description "The Scrapbook. Store/update Elisp data literal (list, string, number, hash) in memory cache. NO EXECUTABLE CODE. Synergy: Batch multiple calls. Updates Available Caches list."
  :args (list '(:name "cache_name_string" :type string :description "The string name for the Elisp symbol to be used as a cache (e.g., \"my-relevant-tags\").")
              '(:name "elisp_data_string" :type string :description "A string containing an Elisp data literal to store (e.g., '(\"tag1\" \"tag2\"), \"a summary string\", 123, (make-hash-table :test 'equal)).")))
 
 (gptel-make-tool
  :name "llm_cache_get"
  :function #'gptel-llm-cache-get
- :description "Retrieves the Elisp data object associated with a given name from the LLM's in-memory session cache. Returns the data as an Elisp string representation."
+ :description "Retrieve cached Elisp data string by name. Synergy: Check Available Caches prompt list before calling. Counterpart to llm_cache_set."
  :args (list '(:name "cache_name_string" :type string :description "The string name of the Elisp cache symbol to retrieve.")))
 
 (gptel-make-tool
  :name "llm_cache_clear"
  :function #'gptel-llm-cache-clear
- :description "Clears a specific Elisp data object from the LLM's in-memory session cache, or clears all caches if no name is provided."
+ :description "Clear specific Elisp data from memory cache, or all if unnamed."
  :args (list '(:name "cache_name_string" :type string :optional t :description "The string name of the Elisp cache symbol to clear (optional, clears all if omitted).")))
 
 (provide 'gptel-llm-cache)

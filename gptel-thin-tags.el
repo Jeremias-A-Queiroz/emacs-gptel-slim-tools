@@ -99,7 +99,7 @@ Returns the exact string content of the temporary context buffer."
 (gptel-make-tool
  :name "investigate_code_tag"
  :function #'gptel-thin-tags--investigate-adapter
- :description "Extract and analyze a specific code fragment (function/variable) from the source code using a TAGS file. Use this to investigate the implementation of a suspected root-cause without reading the whole file."
+ :description "Extract project-wide code fragment (function/variable) via TAGS file. Avoids reading full files. Synergy: Cache findings via llm_cache_set. Batch multiple calls."
  :args (list '(:name "tag_name" :type string :description "The name of the function or definition to investigate")
              '(:name "tags_file" :type string :description "Path to the TAGS file"))
  :category "investigation")
