@@ -1,3 +1,12 @@
+# [0.5.0](https://github.com/Jeremias-A-Queiroz/emacs-gptel-slim-tools/compare/v0.4.0...v0.5.0) (2026-04-14)
+
+
+### Features
+
+* **cache:** Adiciona injeção dinâmica de nomes de cache ([679d9cb](https://github.com/Jeremias-A-Queiroz/emacs-gptel-slim-tools/commit/679d9cb8f8f1f7be4fd68e4340dce60bfae2e7aa))
+
+
+
 # [0.4.0](https://github.com/Jeremias-A-Queiroz/emacs-gptel-slim-tools/compare/v0.3.0...v0.4.0) (2026-04-13)
 
 
