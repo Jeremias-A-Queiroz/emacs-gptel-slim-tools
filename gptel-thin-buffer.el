@@ -153,14 +153,14 @@ and returns the exact source code string with engine metadata."
 (gptel-make-tool
  :name "list_buffer_tags"
  :function #'gptel-thin-buffer--list-adapter
- :description "Lists tags (functions, classes, keys) from an active buffer using structural parsing. Works for C/C++, Elisp, YAML, Python, Ansible, etc."
+ :description "List tags (functions, classes, keys) in active buffer via structural parsing (C/C++, Elisp, YAML, etc.). Synergy: Precedes read_tag_source. For project-wide search, use investigate_code_tag."
  :args (list '(:name "buffer_name" :type string :description "Name of the open buffer to analyze"))
  :category "investigation")
 
 (gptel-make-tool
  :name "read_tag_source"
  :function #'gptel-thin-buffer--extract-adapter
- :description "Extracts the exact source code of a specified tag/function/key from a buffer using structural bounds."
+ :description "Extract exact tag source from active buffer via structural bounds. Synergy: Find tags via list_buffer_tags and cache via llm_cache_set. Batch multiple calls."
  :args (list '(:name "buffer_name" :type string :description "Name of the buffer")
              '(:name "tag_name" :type string :description "Name of the tag/key to extract"))
  :category "investigation")
